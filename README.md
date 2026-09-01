@@ -60,7 +60,7 @@ nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
 
 ### Commands
 
-```
+```bash
 nasc schema init [--preset agent-context|minimal]
 nasc schema infer [--write]
 nasc mark [--tier file,git,llm] [--dry-run|--write|--patch] [--llm-cmd <cmd>] [--force]
@@ -70,24 +70,35 @@ nasc get <path> [key]
 nasc doctor
 ```
 
-| Verb     | Command                         | What it does                                                                     |
-| -------- | ------------------------------- | -------------------------------------------------------------------------------- |
-| Inspect  | `nasc schema infer`, `nasc get` | Understand an unfamiliar corpus and read single values                           |
-| Mark     | `nasc mark`                     | Derive agent-navigation metadata for existing docs and write it into frontmatter |
-| Index    | `nasc index`                    | Generate an `AGENTS.md`-style navigation index from the marked docs              |
-| Validate | `nasc validate`                 | Enforce the schema in CI, reporting docs that are not agent-ready                |
+```bash
+$ nasc --help
+Onboard a repository's docs for AI agents and enforce that markup in CI.
+
+Usage:
+  nasc [flags]
+  nasc [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  doctor      Report the environment nasc sees.
+  get         Read one frontmatter value from a document.
+  help        Help about any command
+  index       Generate an AGENTS.md-style navigation index.
+  mark        Derive agent-navigation metadata and write it into frontmatter.
+  schema      Inspect, create, or infer a schema.
+  validate    Enforce the schema across the corpus. Fails CI on error findings.
+```
+
 
 ## How it works
 
-A three-stage in-memory pipeline runs on every invocation:
+`nasc` runs a three-stage in-memory pipeline on every invocation:
 
 ```
 walk repo → parse each doc (frontmatter + body) → one of { mark | index | validate }
 ```
 
-The walker streams markdown paths, honouring `.gitignore` and `.nascignore` and always skipping `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. Parsers produce a `Doc` per file. The chosen verb consumes the slice. Nothing persists between runs, so each invocation is a clean read of the working tree, which is what a CI job wants.
-
-Write-back edits frontmatter through a `yaml.Node` round-trip and an atomic file replace, so your key order, comments, and body survive untouched. If a file changes underneath a `mark --write`, the run stops with exit code 5 rather than clobber it.
+The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and always skips `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. Parsers produce a `Doc` per file. `nasc` then reads and updates the repo markdown as required.
 
 ## Exit codes
 
