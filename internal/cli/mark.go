@@ -39,6 +39,7 @@ func newMarkCmd() *cobra.Command {
 				cfg.Mark.LLMCmd = llmCmd
 			}
 			mark.LLMCmd = cfg.Mark.LLMCmd
+			mark.LLMExcerptBytes = cfg.Mark.LLMExcerptBytes
 			tiers := splitCSV(tierCSV)
 			results := mark.Plan(docs, s, cfg.Root, tiers, force)
 			if len(results) == 0 {

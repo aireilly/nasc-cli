@@ -164,7 +164,7 @@ exclude: ["CHANGELOG.md", "node_modules/**"]
 
 mark:
   llm_cmd: ""
-  llm_excerpt_bytes: 2000
+  llm_excerpt_bytes: 2000   # bytes of each doc sent to the llm; 0 sends the whole file
 
 index:
   template: templates/agents-index.tmpl
@@ -172,6 +172,14 @@ index:
 
 output:
   default_format: auto   # auto | table | jsonl
+```
+
+`llm_excerpt_bytes` caps how much of each document body reaches the LLM when deriving fields. Set it to `0` to send the whole file, which helps when a good description depends on context buried deep in a long document. Expect larger prompts and higher token cost in return.
+
+```yaml
+mark:
+  llm_cmd: claude -p
+  llm_excerpt_bytes: 0
 ```
 
 ## License and attribution

@@ -17,6 +17,11 @@ import (
 // LLMCmd is set by the mark command before Plan runs the llm tier.
 var LLMCmd string
 
+// LLMExcerptBytes caps how many bytes of each doc body are sent to the llm as
+// context. Zero or less means send the whole file untruncated. The mark command
+// sets it from config before Plan runs the llm tier.
+var LLMExcerptBytes int
+
 // LLMRequest is the JSON written to the subprocess stdin.
 type LLMRequest struct {
 	Path    string                  `json:"path"`
@@ -176,8 +181,8 @@ func LLMTier(d model.Doc, s *schema.Schema, root string, force bool) map[string]
 		return map[string]model.Value{}
 	}
 	excerpt := d.Body
-	if len(excerpt) > 2000 {
-		excerpt = excerpt[:2000]
+	if LLMExcerptBytes > 0 && len(excerpt) > LLMExcerptBytes {
+		excerpt = excerpt[:LLMExcerptBytes]
 	}
 	req := LLMRequest{Path: d.Path, Title: d.Title, Type: d.Type, Excerpt: excerpt, Want: want, Schema: sub}
 	got, err := RunLLM(LLMCmd, req)
