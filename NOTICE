@@ -1,0 +1,11 @@
+nasc
+Copyright 2026 Aidan Reilly and the nasc contributors
+
+This product is licensed under the Apache License, Version 2.0. See the LICENSE
+file for the full text.
+
+The convention of writing a document's `description` as a load-or-skip trigger
+for an agent, rather than a topic summary, was informed by the code-docs project
+by Laura Armstrong (https://github.com/armstrongl/code-docs). No code,
+configuration, prompt text, or documentation from that project is included in or
+derived from nasc. This project is not affiliated with or endorsed by code-docs.

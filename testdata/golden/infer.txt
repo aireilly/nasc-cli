@@ -1,0 +1,10 @@
+FIELD      PRESENT  TYPES         EXAMPLE
+title      72.7%    string        Deep File
+author     27.3%    string        me
+created    9.1%     date          2026-01-15
+depth      9.1%     number        3
+draft      9.1%     string        yes
+pinned     9.1%     string        on
+published  9.1%     date          2026-02-14
+tags       9.1%     list<string>  doc, architecture
+updated    9.1%     date          2026-08-31

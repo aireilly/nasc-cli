@@ -1,0 +1,53 @@
+version: 1
+
+fields:
+  id:
+    type: string
+    required: false
+    derive: slug
+  title:
+    type: string
+    required: true
+    derive: h1
+  type:
+    type: string
+    required: true
+    derive: parent-dir
+    enum: [concept, procedure, reference, architecture, runbook]
+  description:
+    type: string
+    required: true
+    min_length: 30
+    max_length: 200
+    derive: llm
+  tags:
+    type: list
+    items: string
+    required: false
+    derive: llm
+  owner:
+    type: string
+    required: false
+    derive: codeowners
+  lastUpdated:
+    type: date
+    required: false
+    derive: git-last-change
+  paths:
+    type: list
+    items: string
+    required: false
+
+rules:
+  - name: description-is-a-trigger
+    when: exists(description)
+    assert: length(description) >= 30
+    severity: error
+    message: >
+      description should state when an agent needs to load this doc, phrased as
+      a condition, not a topic summary. Too short to make a load-or-skip call.
+  - name: paths-still-resolve
+    when: exists(paths)
+    assert: path_match_count(paths) > 0
+    severity: error
+    message: No files match these globs. The code was probably moved or renamed.

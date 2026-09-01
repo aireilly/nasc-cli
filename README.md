@@ -1,0 +1,164 @@
+# nasc
+
+> **nasc**, *ainmfhocal firinscneach* (masculine noun) — genitive singular **naisc**, plural **naisc**
+> 1. link, tie, bond
+> 2. clasp
+> 3. collar (for tethering an animal)
+>
+> **nasc**, *briathar* (verb) — to bind, to tie, to link, to connect. Verbal noun: **nascadh**.
+>
+> *From Irish (Gaeilge).* The tool links a repository's docs to the agents that read them.
+
+`nasc` onboards a repository's existing markdown docs for AI-agent consumption and enforces that markup in CI. It marks docs with agent-navigation metadata, generates an index an agent reads first, and validates the whole corpus against a declared schema.
+
+A single static binary. Offline by default. No database.
+
+## The problem it solves
+
+AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter. On one measured corpus, 54% of an agent's tool calls went to navigation before any real work began. Cost climbs with every doc you add.
+
+The fix is a cheap metadata layer. Give each doc one line that says when an agent should load it, list those triggers in a top-level index, and the agent can decide what to open without reading everything first. `nasc` produces that layer and keeps it honest in CI.
+
+## The four verbs
+
+| Verb | Command | What it does |
+| --- | --- | --- |
+| Mark | `nasc mark` | Derive agent-navigation metadata for existing docs and write it into frontmatter |
+| Index | `nasc index` | Generate an `AGENTS.md`-style navigation index from the marked docs |
+| Validate | `nasc validate` | Enforce the schema in CI, reporting docs that are not agent-ready |
+| Inspect | `nasc schema infer`, `nasc get` | Understand an unfamiliar corpus and read single values |
+
+## Install
+
+Requires Go 1.25 or newer.
+
+```bash
+go install github.com/aireilly/nasc-cli/cmd/nasc@latest
+```
+
+Or build from a clone:
+
+```bash
+git clone https://github.com/aireilly/nasc-cli
+cd nasc-cli
+go build -o nasc ./cmd/nasc
+```
+
+The binary is `nasc`. It builds with `CGO_ENABLED=0`, so the result is a static binary you can drop into any CI image.
+
+## Quick start
+
+```bash
+# Describe what frontmatter your corpus should carry.
+nasc schema init --preset agent-context
+
+# Look at what you already have, and let nasc propose a schema.
+nasc schema infer --write
+
+# Backfill metadata from file facts and git history. Review the patch before writing.
+nasc mark --tier file,git --patch
+nasc mark --tier file,git --write
+
+# Generate the index agents read first.
+nasc index --output AGENTS.md
+
+# Gate it in CI. Exit code 3 fails the job.
+nasc validate
+```
+
+Add an optional LLM tier when you want a derived one-line description or tags. `nasc` never vendors an SDK or holds an API key. It shells out to an agent CLI you already run:
+
+```bash
+nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
+```
+
+## Commands
+
+```
+nasc schema init [--preset agent-context|minimal]
+nasc schema infer [--write]
+nasc mark [--tier file,git,llm] [--dry-run|--write|--patch] [--llm-cmd <cmd>] [--force]
+nasc index [--output <file>] [--template <file>] [--strict]
+nasc validate [--severity error|warn] [--json]
+nasc get <path> [key]
+nasc doctor
+```
+
+## How it works
+
+A three-stage in-memory pipeline runs on every invocation:
+
+```
+walk repo → parse each doc (frontmatter + body) → one of { mark | index | validate }
+```
+
+The walker streams markdown paths, honouring `.gitignore` and `.nascignore` and always skipping `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. Parsers produce a `Doc` per file. The chosen verb consumes the slice. Nothing persists between runs, so each invocation is a clean read of the working tree, which is what a CI job wants.
+
+Write-back edits frontmatter through a `yaml.Node` round-trip and an atomic file replace, so your key order, comments, and body survive untouched. If a file changes underneath a `mark --write`, the run stops with exit code 5 rather than clobber it.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | success, corpus is agent-ready |
+| 1 | success, nothing to do (empty result, empty diff) |
+| 2 | usage error |
+| 3 | validation failure (`validate`, `index --strict`) |
+| 5 | write conflict, a file changed under us during `mark --write` |
+
+## Configuration
+
+`.nasc/config.yaml`, every key optional:
+
+```yaml
+root: .
+include: ["**/*.md", "**/*.mdx"]
+exclude: ["CHANGELOG.md", "node_modules/**"]
+
+mark:
+  llm_cmd: ""
+  llm_excerpt_bytes: 2000
+
+index:
+  template: templates/agents-index.tmpl
+  output: AGENTS.md
+
+output:
+  default_format: auto   # auto | table | jsonl
+```
+
+## What it is not
+
+`nasc` marks, indexes, and validates. It stays out of the neighbouring problems on purpose, so you can compose it with tools that already own them.
+
+| Out of scope | Why |
+| --- | --- |
+| A query language over the corpus | Domain-specific query CLIs win once docs are structured |
+| A persistent database or SQLite index | The three verbs run in memory; there is no query to persist |
+| Selecting elements inside a document | Owned by tools like `mdq` and `mq`; pipe `nasc --paths` into them |
+| Semantic or embedding search | A separate concern with its own tools |
+| Drift detection between docs and code | A saturated space with dedicated products |
+
+No daemon. No network access in the core binary. No MCP server in v0.1.
+
+## Stack
+
+| Concern | Choice |
+| --- | --- |
+| CLI | `spf13/cobra` |
+| YAML | `gopkg.in/yaml.v3` (`yaml.Node` for round-trip edits) |
+| Hashing | `cespare/xxhash/v2` |
+| Ignore rules | `sabhiram/go-gitignore` |
+| Globs | `gobwas/glob` |
+| Git | shells out to `git` |
+| Release | `goreleaser` |
+
+Every library is MIT, BSD, or Apache-2.0.
+
+## License and attribution
+
+Apache-2.0. See [LICENSE](LICENSE) for the full text.
+
+The convention of writing a doc's `description` as a load-or-skip trigger, rather than a topic summary, was informed by the [code-docs](https://github.com/armstrongl/code-docs) project by Laura Armstrong. No code, configuration, prompt text, or documentation from that project is included in or derived from `nasc`. This project is not affiliated with or endorsed by code-docs.
+
+Contributions use a DCO. Sign your commits with `git commit -s`.

@@ -1,0 +1,14 @@
+version: 1
+fields:
+  id:
+    type: string
+    required: false
+    derive: slug
+  title:
+    type: string
+    required: true
+    derive: h1
+  type:
+    type: string
+    required: true
+    derive: parent-dir
