@@ -39,3 +39,39 @@ func TestBuildAndRenderIndex(t *testing.T) {
 		t.Fatalf("missing unmarked section:\n%s", out)
 	}
 }
+
+func TestMergeCreatesWhenEmpty(t *testing.T) {
+	out := string(Merge(nil, []byte("BODY\n")))
+	want := BeginMarker + "\nBODY\n" + EndMarker + "\n"
+	if out != want {
+		t.Fatalf("Merge(empty) = %q, want %q", out, want)
+	}
+}
+
+func TestMergeAppendsWhenNoMarkers(t *testing.T) {
+	existing := []byte("# My handwritten notes\n\nkeep me\n")
+	out := string(Merge(existing, []byte("GEN\n")))
+	if !strings.HasPrefix(out, "# My handwritten notes\n\nkeep me\n") {
+		t.Fatalf("existing content not preserved:\n%s", out)
+	}
+	if !strings.Contains(out, BeginMarker+"\nGEN\n"+EndMarker) {
+		t.Fatalf("generated block not appended:\n%s", out)
+	}
+}
+
+func TestMergeReplacesRegionInPlace(t *testing.T) {
+	existing := []byte("intro\n\n" + BeginMarker + "\nOLD\n" + EndMarker + "\n\noutro\n")
+	out := string(Merge(existing, []byte("NEW\n")))
+	if strings.Contains(out, "OLD") {
+		t.Fatalf("old region not replaced:\n%s", out)
+	}
+	if !strings.Contains(out, "intro\n") || !strings.Contains(out, "outro\n") {
+		t.Fatalf("surrounding prose lost:\n%s", out)
+	}
+	if !strings.Contains(out, BeginMarker+"\nNEW\n"+EndMarker) {
+		t.Fatalf("new region missing:\n%s", out)
+	}
+	if strings.Count(out, BeginMarker) != 1 {
+		t.Fatalf("region duplicated:\n%s", out)
+	}
+}

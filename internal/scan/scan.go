@@ -22,6 +22,17 @@ type Options struct {
 
 var alwaysSkip = map[string]bool{
 	".git": true, ".nasc": true, "node_modules": true, "vendor": true,
+	// Agent tool directories hold skills, commands, and agent definitions,
+	// not documentation. Skip them wherever they appear in the tree.
+	".claude": true, ".cursor": true,
+}
+
+// alwaysSkipFile names markdown files that are agent instructions or skill
+// definitions rather than documentation. nasc never marks or indexes them, so a
+// project's CLAUDE.md and any SKILL.md stay under human control and the index
+// output file never lists itself.
+var alwaysSkipFile = map[string]bool{
+	"AGENTS.md": true, "CLAUDE.md": true, "GEMINI.md": true, "SKILL.md": true,
 }
 
 var mdExt = map[string]bool{".md": true, ".markdown": true, ".mdx": true}
@@ -61,6 +72,9 @@ func Walk(opts Options) ([]string, error) {
 		}
 		if !mdExt[strings.ToLower(filepath.Ext(rel))] {
 			return nil
+		}
+		if alwaysSkipFile[d.Name()] {
+			return nil // agent instructions and skill files, not docs
 		}
 		if gi != nil && gi.MatchesPath(rel) {
 			return nil

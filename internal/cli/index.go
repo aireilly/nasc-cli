@@ -4,6 +4,9 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 
 	"github.com/aireilly/nasc-cli/internal/render"
@@ -48,16 +51,23 @@ func newIndexCmd() *cobra.Command {
 			}
 			data := render.BuildIndex(docs, s)
 
-			w := cmd.OutOrStdout()
+			// Writing to a file merges the generated block into any existing
+			// content, so a hand-written AGENTS.md keeps its prose and only the
+			// nasc-managed region is refreshed. Stdout stays a plain render.
 			if output != "" {
-				f, ferr := os.Create(output)
-				if ferr != nil {
-					return ferr
+				var buf bytes.Buffer
+				if err := render.Index(&buf, data, tmpl); err != nil {
+					return err
 				}
-				defer f.Close()
-				w = f
-			}
-			if err := render.Index(w, data, tmpl); err != nil {
+				existing, rerr := os.ReadFile(output)
+				if rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+					return rerr
+				}
+				merged := render.Merge(existing, buf.Bytes())
+				if werr := os.WriteFile(output, merged, 0o644); werr != nil {
+					return werr
+				}
+			} else if err := render.Index(cmd.OutOrStdout(), data, tmpl); err != nil {
 				return err
 			}
 			if strict && len(data.Unmarked) > 0 {

@@ -120,7 +120,9 @@ Available Commands:
 walk repo → parse each doc (frontmatter + body) → one of { mark | index | validate }
 ```
 
-The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and always skips `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. Parsers produce a `Doc` per file. `nasc` then reads and updates the repo markdown as required.
+The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and always skips `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so `nasc` never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, any `SKILL.md`, and everything under a `.claude/` or `.cursor/` directory. Parsers produce a `Doc` per file. `nasc` then reads and updates the repo markdown as required.
+
+`nasc index --output AGENTS.md` merges rather than overwrites. The generated content lives between `<!-- BEGIN nasc index -->` and `<!-- END nasc index -->` markers. On the first run the block is appended to any existing file; on later runs only that region is refreshed, so a hand-written `AGENTS.md` keeps its prose. This is also why `AGENTS.md` is on the skip list: the index never lists itself.
 
 ## Exit codes
 

@@ -40,3 +40,28 @@ func TestWalkFiltersAndIgnores(t *testing.T) {
 		t.Fatalf("Walk = %v, want %v", got, want)
 	}
 }
+
+// Agent instruction and skill files are not documentation, so Walk never yields
+// them: CLAUDE.md/AGENTS.md/GEMINI.md and any SKILL.md by name, and everything
+// under a .claude or .cursor directory anywhere in the tree.
+func TestWalkSkipsAgentFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "docs/real.md", "keep")
+	writeFile(t, dir, "AGENTS.md", "skip")
+	writeFile(t, dir, "CLAUDE.md", "skip")
+	writeFile(t, dir, "GEMINI.md", "skip")
+	writeFile(t, dir, "docs/SKILL.md", "skip")
+	writeFile(t, dir, ".claude/skills/x/SKILL.md", "skip")
+	writeFile(t, dir, ".claude/commands/y.md", "skip")
+	writeFile(t, dir, "examples/.claude/skills/z/SKILL.md", "skip")
+	writeFile(t, dir, ".cursor/rules.md", "skip")
+
+	got, err := Walk(Options{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"docs/real.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Walk = %v, want %v", got, want)
+	}
+}

@@ -7,11 +7,41 @@ import (
 	_ "embed"
 	"io"
 	"sort"
+	"strings"
 	"text/template"
 
 	"github.com/aireilly/nasc-cli/internal/model"
 	"github.com/aireilly/nasc-cli/internal/schema"
 )
+
+// Markers delimit the region of an output file that nasc owns. Everything
+// outside them is written by hand and preserved across runs.
+const (
+	BeginMarker = "<!-- BEGIN nasc index -->"
+	EndMarker   = "<!-- END nasc index -->"
+)
+
+// Merge splices a freshly generated index into an existing file. When the file
+// already carries a nasc-managed region it is replaced in place, so hand-written
+// prose above or below it survives. When the file has no region the block is
+// appended after the existing content. An empty file yields just the block.
+func Merge(existing, generated []byte) []byte {
+	block := BeginMarker + "\n" + strings.TrimRight(string(generated), "\n") + "\n" + EndMarker + "\n"
+	s := string(existing)
+	if strings.TrimSpace(s) == "" {
+		return []byte(block)
+	}
+	if b := strings.Index(s, BeginMarker); b >= 0 {
+		if e := strings.Index(s[b:], EndMarker); e >= 0 {
+			end := b + e + len(EndMarker)
+			return []byte(s[:b] + block + strings.TrimPrefix(s[end:], "\n"))
+		}
+	}
+	if !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return []byte(s + "\n" + block)
+}
 
 //go:embed templates/agents-index.tmpl
 var defaultIndexTmpl string
