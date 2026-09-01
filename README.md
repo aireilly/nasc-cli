@@ -10,8 +10,8 @@
 > *From Irish (Gaeilge).* 
 
 
-`nasc` is a single static binary that onboards a repository's existing markdown docs for AI-agent consumption and enforces a simple YAML front matter in CI.
-It marks docs with agent-navigation YAML metadata, generates a docs index for agents, and validates the whole docs corpus against a declared schema.
+`nasc` onboards a repository's existing markdown docs for AI agent consumption and enforces a simple YAML front matter in CI.
+It marks docs with agent-friendly YAML metadata, generates a docs index for agents, and validates the whole docs corpus against a declared schema.
 
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
 With `nasc`, agents can decide what to open in repository, without reading everything first.
