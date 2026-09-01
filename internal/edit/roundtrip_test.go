@@ -24,7 +24,7 @@ func TestSetNoOpIsByteIdentical(t *testing.T) {
 		}
 		p := filepath.Join(root, e.Name())
 		orig, _ := os.ReadFile(p)
-		out, err := Set(orig, map[string]model.Value{}, nil)
+		out, err := Set(orig, map[string]model.Value{})
 		if err != nil {
 			t.Fatalf("%s: Set error %v", e.Name(), err)
 		}

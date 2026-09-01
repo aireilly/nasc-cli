@@ -12,7 +12,6 @@ import (
 type Result struct {
 	Path    string
 	Updates map[string]model.Value
-	Derived []string
 }
 
 func cloneFields(m map[string]model.Value) map[string]model.Value {
@@ -24,14 +23,12 @@ func cloneFields(m map[string]model.Value) map[string]model.Value {
 }
 
 // Plan runs the requested tiers over docs and returns one Result per doc that
-// gained or refreshed a field. Tiers run in order and fill absent keys, refresh
-// the keys nasc owns (listed in x-nasc-generated), and overwrite human-set keys
-// only when force is set. Later tiers see earlier tiers' additions through the
-// merged view.
+// gained or refreshed a field. Tiers run in order: they fill absent keys, the
+// git tier refreshes lastUpdated, and force overwrites present keys. Later tiers
+// see earlier tiers' additions through the merged view.
 func Plan(docs []model.Doc, s *schema.Schema, root string, tiers []string, force bool) []Result {
 	var out []Result
 	for _, d := range docs {
-		owned := ownedSet(d)
 		merged := map[string]model.Value{}
 		view := d
 		view.Fields = cloneFields(d.Fields)
@@ -39,11 +36,11 @@ func Plan(docs []model.Doc, s *schema.Schema, root string, tiers []string, force
 			var up map[string]model.Value
 			switch tier {
 			case "file":
-				up = FileTier(view, owned, force)
+				up = FileTier(view, force)
 			case "git":
-				up = GitTier(view, root, owned, force)
+				up = GitTier(view, root, force)
 			case "llm":
-				up = LLMTier(view, s, root, owned, force)
+				up = LLMTier(view, s, root, force)
 			}
 			for k, v := range up {
 				// Skip refreshes that would not change the value, so a re-run
@@ -58,33 +55,13 @@ func Plan(docs []model.Doc, s *schema.Schema, root string, tiers []string, force
 		if len(merged) == 0 {
 			continue
 		}
-		out = append(out, Result{Path: d.Path, Updates: merged, Derived: keys(merged)})
+		out = append(out, Result{Path: d.Path, Updates: merged})
 	}
 	return out
-}
-
-func keys(m map[string]model.Value) []string {
-	var k []string
-	for key := range m {
-		k = append(k, key)
-	}
-	return k
 }
 
 // equalValue reports whether two values are the same for refresh purposes.
 // Kind plus canonical string form covers strings, dates, and lists.
 func equalValue(a, b model.Value) bool {
 	return a.Kind == b.Kind && a.String() == b.String()
-}
-
-// ownedSet returns the keys nasc previously wrote, read from x-nasc-generated.
-// These are the fields a re-run may refresh; everything else is human-owned.
-func ownedSet(d model.Doc) map[string]bool {
-	set := map[string]bool{}
-	if v, ok := d.Field("x-nasc-generated"); ok {
-		for _, key := range v.List() {
-			set[key] = true
-		}
-	}
-	return set
 }

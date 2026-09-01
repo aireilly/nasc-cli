@@ -73,7 +73,7 @@ func RunLLM(cmdline string, req LLMRequest) (map[string]model.Value, error) {
 // excerpt as context. The caller's --llm-cmd need only be a bare agent CLI.
 func buildPrompt(req LLMRequest) string {
 	var b strings.Builder
-	b.WriteString("You are generating navigation metadata for a documentation file so that AI agents can decide when to load it.\n\n")
+	b.WriteString("You are generating navigation metadata for a documentation file. It serves two readers at once: a human skimming an index to find the right doc, and an AI agent deciding whether to load it. Write for both.\n\n")
 	b.WriteString("File: " + req.Path + "\n")
 	if req.Title != "" {
 		b.WriteString("Title: " + req.Title + "\n")
@@ -88,7 +88,7 @@ func buildPrompt(req LLMRequest) string {
 	for _, w := range req.Want {
 		switch w {
 		case "description":
-			line := "  \"description\": one sentence stating the condition under which an agent should load this doc, phrased as a trigger, not a topic summary."
+			line := "  \"description\": one sentence, written for both humans and agents, that says what a reader will learn or be able to do after loading this doc. Use direct, active language. Start with a verb such as \"Learn how to\" for task docs or \"Learn about\" for conceptual docs. Do not phrase it as a loading trigger and do not open with \"Load when\"."
 			if bounds := lengthHint(req.Schema[w]); bounds != "" {
 				line += " " + bounds
 			}
@@ -153,10 +153,10 @@ func withinBounds(v model.Value, f schema.Field) bool {
 }
 
 // LLMTier builds a request for llm-derived fields the doc lacks and runs it.
-// Unlike the deterministic tiers it never auto-refreshes owned fields: LLM
-// output is nondeterministic, so re-generating on every run would churn the
-// corpus. It fills absent fields, and force overwrites human-set ones.
-func LLMTier(d model.Doc, s *schema.Schema, root string, owned map[string]bool, force bool) map[string]model.Value {
+// Its output is nondeterministic, so it never refreshes a field that is already
+// present: re-generating on every run would churn the corpus. It fills absent
+// fields, and force overwrites present ones.
+func LLMTier(d model.Doc, s *schema.Schema, root string, force bool) map[string]model.Value {
 	if LLMCmd == "" || s == nil {
 		return map[string]model.Value{}
 	}
@@ -166,7 +166,7 @@ func LLMTier(d model.Doc, s *schema.Schema, root string, owned map[string]bool, 
 		if f.Derive != "llm" {
 			continue
 		}
-		if !shouldSet(d, name, owned, force, false) {
+		if !shouldSet(d, name, force, false) {
 			continue
 		}
 		want = append(want, name)

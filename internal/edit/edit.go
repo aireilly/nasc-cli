@@ -14,13 +14,11 @@ import (
 )
 
 // Set applies updates to a document's frontmatter, preserving key order,
-// comments, quoting, and line endings, and never touching the body. Keys in
-// derived are recorded under x-nasc-generated.
-func Set(original []byte, updates map[string]model.Value, derived []string) ([]byte, error) {
-	// TOP GUARD: no-op for empty updates and no derived keys. This is the
-	// only no-op condition; nothing else short-circuits before the real edit
-	// path runs.
-	if len(updates) == 0 && len(derived) == 0 {
+// comments, quoting, and line endings, and never touching the body.
+func Set(original []byte, updates map[string]model.Value) ([]byte, error) {
+	// TOP GUARD: no updates means no edit. This is the only no-op condition;
+	// nothing else short-circuits before the real edit path runs.
+	if len(updates) == 0 {
 		return original, nil // no-op keeps bytes identical for every input
 	}
 
@@ -53,9 +51,8 @@ func Set(original []byte, updates map[string]model.Value, derived []string) ([]b
 	for _, key := range sortedKeys(updates) {
 		setKey(mapping, key, updates[key])
 	}
-	if len(derived) > 0 {
-		mergeDerived(mapping, derived)
-	}
+	// Drop the deprecated provenance key so re-marking a file cleans it up.
+	removeKey(mapping, "x-nasc-generated")
 
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -129,36 +126,15 @@ func valueNode(v model.Value) *yaml.Node {
 	}
 }
 
-func mergeDerived(m *yaml.Node, derived []string) {
-	set := map[string]bool{}
-	for _, d := range derived {
-		set[d] = true
-	}
+// removeKey deletes key from the mapping if present, preserving the order of
+// the remaining keys.
+func removeKey(m *yaml.Node, key string) {
 	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == "x-nasc-generated" {
-			for _, e := range m.Content[i+1].Content {
-				set[e.Value] = true
-			}
-			m.Content[i+1] = derivedNode(set)
+		if m.Content[i].Value == key {
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
 			return
 		}
 	}
-	m.Content = append(m.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x-nasc-generated"},
-		derivedNode(set))
-}
-
-func derivedNode(set map[string]bool) *yaml.Node {
-	var keys []string
-	for k := range set {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	n := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-	for _, k := range keys {
-		n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k})
-	}
-	return n
 }
 
 func sortedKeys(m map[string]model.Value) []string {

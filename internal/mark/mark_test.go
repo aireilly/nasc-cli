@@ -30,7 +30,7 @@ func TestFileTierFillsAbsentOnly(t *testing.T) {
 		Headings: []model.Heading{{Level: 1, Text: "Auth flow"}},
 		Fields:   map[string]model.Value{"title": {Kind: model.KindString, Str: "Human title"}},
 	}
-	up := FileTier(d, nil, false)
+	up := FileTier(d, false)
 	if _, ok := up["title"]; ok {
 		t.Fatalf("title is human-set and must not be overwritten")
 	}
@@ -42,28 +42,8 @@ func TestFileTierFillsAbsentOnly(t *testing.T) {
 	}
 }
 
-// A field nasc owns (listed in x-nasc-generated) is refreshed when the derived
-// value changes: here the H1 moved on, so title is re-derived.
-func TestPlanRefreshesOwnedFields(t *testing.T) {
-	d := model.Doc{
-		Path: "docs/auth.md", Type: "docs",
-		Headings: []model.Heading{{Level: 1, Text: "New title"}},
-		Fields: map[string]model.Value{
-			"title":            {Kind: model.KindString, Str: "Old title"},
-			"x-nasc-generated": {Kind: model.KindList, Str: `["title"]`},
-		},
-	}
-	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, false)
-	if len(results) != 1 {
-		t.Fatalf("expected one result, got %d", len(results))
-	}
-	if results[0].Updates["title"].Str != "New title" {
-		t.Fatalf("owned title should refresh to the new H1, got %q", results[0].Updates["title"].Str)
-	}
-}
-
-// A human-set field (present but not in x-nasc-generated) is never touched
-// without force, even when the derived value differs.
+// Any present field is left alone without force, even when the derived value has
+// moved on: here the H1 changed but the existing title is preserved.
 func TestPlanPreservesHumanFields(t *testing.T) {
 	d := model.Doc{
 		Path: "docs/auth.md", Type: "docs",

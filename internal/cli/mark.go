@@ -55,7 +55,7 @@ func newMarkCmd() *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), "nasc: skip %s: %v\n", r.Path, rerr)
 					continue
 				}
-				updated, eerr := edit.Set(orig, r.Updates, r.Derived)
+				updated, eerr := edit.Set(orig, r.Updates)
 				if eerr != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "nasc: skip %s: %v\n", r.Path, eerr)
 					continue

@@ -60,6 +60,26 @@ Add an optional LLM tier when you want a derived one-line description or tags. `
 nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
 ```
 
+### Generating descriptions with LLM
+
+The `description` field is what a human scanning `AGENTS.md`, or an agent choosing what to open, reads first. The `file` and `git` tiers cannot write it, because it takes reading the doc to say what the doc teaches. That is the job of the `llm` tier.
+
+Run it by adding `llm` to `--tier` and passing the CLI to shell out to:
+
+```bash
+nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
+```
+
+`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body, then asks for a single JSON object with only the fields it requested and the character bounds each one must respect. Whatever prose or code fences the agent wraps around that object are stripped before the values are validated against the schema. A value that breaks its length bounds is dropped rather than written.
+
+The prompt tells the agent to write each description for two readers at once, a person skimming an index and an agent deciding whether to load the doc, in direct active language. Task and tutorial docs come back as `Learn how to ...` and conceptual or reference docs as `Learn about ...`. For example:
+
+```yaml
+description: Learn how to implement a custom observer for quantization calibration or extend how weight and activation statistics are accumulated in llm-compressor.
+```
+
+The LLM tier is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present. Set `llm_cmd` and `llm_excerpt_bytes` under `mark:` in `.nasc/config.yaml` to make the command and excerpt size defaults.
+
 ### Commands
 
 ```bash
@@ -137,6 +157,6 @@ output:
 
 Apache-2.0. See [LICENSE](LICENSE) for the full text.
 
-The convention of writing a doc's `description` as a load-or-skip trigger, rather than a topic summary, was informed by the [code-docs](https://github.com/armstrongl/code-docs) project by Laura Armstrong. No code, configuration, prompt text, or documentation from that project is included in or derived from `nasc`.
+The convention of writing a doc's `description` to help an agent decide whether to load the doc, rather than as a plain topic summary, was informed by the [code-docs](https://github.com/armstrongl/code-docs) project by Laura Armstrong. No code, configuration, prompt text, or documentation from that project is included in or derived from `nasc`.
 
 Contributions use a DCO. Sign your commits with `git commit -s`.

@@ -39,13 +39,13 @@ fields:
     required: false
 
 rules:
-  - name: description-is-a-trigger
+  - name: description-is-actionable
     when: exists(description)
     assert: length(description) >= 30
     severity: error
     message: >
-      description should state when an agent needs to load this doc, phrased as
-      a condition, not a topic summary. Too short to make a load-or-skip call.
+      description should say, in direct active language, what a reader learns or
+      can do after loading this doc. Too short to guide a human or an agent.
   - name: paths-still-resolve
     when: exists(paths)
     assert: path_match_count(paths) > 0

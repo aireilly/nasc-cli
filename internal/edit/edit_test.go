@@ -4,7 +4,6 @@
 package edit
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -13,11 +12,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestSetAppendsKeyAndRecordsDerived(t *testing.T) {
+func TestSetAppendsKeyAndLeavesNoProvenance(t *testing.T) {
 	orig := []byte("---\ntitle: Auth\n---\nbody text\n")
 	out, err := Set(orig, map[string]model.Value{
 		"type": {Kind: model.KindString, Str: "architecture"},
-	}, []string{"type"})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,8 +24,8 @@ func TestSetAppendsKeyAndRecordsDerived(t *testing.T) {
 	if !strings.Contains(s, "type: architecture") {
 		t.Fatalf("type not written: %q", s)
 	}
-	if !strings.Contains(s, "x-nasc-generated") {
-		t.Fatalf("provenance not recorded: %q", s)
+	if strings.Contains(s, "x-nasc-generated") {
+		t.Fatalf("provenance key must not be written: %q", s)
 	}
 	if !strings.HasSuffix(s, "body text\n") {
 		t.Fatalf("body changed: %q", s)
@@ -40,7 +39,7 @@ func TestSetWritesDateUnquotedSoItRoundTripsAsDate(t *testing.T) {
 	orig := []byte("---\ntitle: Auth\n---\nbody\n")
 	out, err := Set(orig, map[string]model.Value{
 		"lastUpdated": {Kind: model.KindDate, Str: "2026-02-26"},
-	}, []string{"lastUpdated"})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +60,7 @@ func TestSetInsertsBlockWhenNoFrontmatter(t *testing.T) {
 	orig := []byte("# Heading\n\nbody\n")
 	out, err := Set(orig, map[string]model.Value{
 		"title": {Kind: model.KindString, Str: "Heading"},
-	}, []string{"title"})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +77,7 @@ func TestSetPreservesCRLF(t *testing.T) {
 	orig := []byte("---\r\ntitle: t\r\n---\r\nbody\r\n")
 	out, err := Set(orig, map[string]model.Value{
 		"type": {Kind: model.KindString, Str: "runbook"},
-	}, []string{"type"})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +95,7 @@ func TestSetKeepsBareLFBodyLineInCRLFFrontmatterFile(t *testing.T) {
 	orig := []byte("---\r\ntitle: t\r\n---\r\nline1\nline2\r\n")
 	out, err := Set(orig, map[string]model.Value{
 		"type": {Kind: model.KindString, Str: "runbook"},
-	}, []string{"type"})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +113,7 @@ func TestSetListItemWithEmbeddedCommaSpaceRoundTrips(t *testing.T) {
 	orig := []byte("---\ntitle: t\n---\nbody\n")
 	out, err := Set(orig, map[string]model.Value{
 		"tags": {Kind: model.KindList, Str: `["hello, world"]`},
-	}, nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,23 +132,25 @@ func TestSetListItemWithEmbeddedCommaSpaceRoundTrips(t *testing.T) {
 	}
 }
 
-// TestSetDerivedOnlyWritesDerivedBlock is a regression test for a bug where
-// a call with empty updates but non-empty derived against a file with
-// parseable frontmatter was silently dropped (returned unchanged) instead
-// of writing the x-nasc-generated block.
-func TestSetDerivedOnlyWritesDerivedBlock(t *testing.T) {
-	orig := []byte("---\ntitle: t\n---\nbody\n")
-	out, err := Set(orig, map[string]model.Value{}, []string{"type"})
+// A file that still carries the deprecated x-nasc-generated key has it stripped
+// on the next edit, so re-marking cleans up old provenance rather than leaving
+// it to rot in the frontmatter.
+func TestSetStripsDeprecatedProvenanceKey(t *testing.T) {
+	orig := []byte("---\ntitle: t\nx-nasc-generated:\n  - title\n---\nbody\n")
+	out, err := Set(orig, map[string]model.Value{
+		"type": {Kind: model.KindString, Str: "runbook"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(out, orig) {
-		t.Fatalf("derived-only write was dropped: output unchanged")
+	s := string(out)
+	if strings.Contains(s, "x-nasc-generated") {
+		t.Fatalf("stale provenance key should be removed on edit: %q", s)
 	}
-	if !strings.Contains(string(out), "x-nasc-generated") {
-		t.Fatalf("derived block missing: %q", out)
+	if !strings.Contains(s, "type: runbook") {
+		t.Fatalf("new key not written: %q", s)
 	}
-	if !strings.Contains(string(out), "type") {
-		t.Fatalf("derived key missing: %q", out)
+	if !strings.Contains(s, "title: t") {
+		t.Fatalf("existing human key lost: %q", s)
 	}
 }
