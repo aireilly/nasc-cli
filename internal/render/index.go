@@ -6,6 +6,7 @@ package render
 import (
 	_ "embed"
 	"io"
+	"path"
 	"sort"
 	"strings"
 	"text/template"
@@ -95,6 +96,23 @@ func missingRequired(d model.Doc, s *schema.Schema) bool {
 	return false
 }
 
+// displayTitle is the link text for a doc: its title when it has one, otherwise
+// a readable label from the path. A bare README or index falls back to its
+// parent directory, since those names alone carry no meaning in a flat list.
+func displayTitle(d model.Doc) string {
+	if d.Title != "" {
+		return d.Title
+	}
+	base := path.Base(d.Path)
+	name := strings.TrimSuffix(base, path.Ext(base))
+	if lower := strings.ToLower(name); lower == "readme" || lower == "index" {
+		if dir := path.Base(path.Dir(d.Path)); dir != "." && dir != "/" {
+			return dir
+		}
+	}
+	return name
+}
+
 // Index renders the index. An empty tmpl uses the embedded default.
 func Index(w io.Writer, data IndexData, tmpl string) error {
 	text := tmpl
@@ -108,6 +126,7 @@ func Index(w io.Writer, data IndexData, tmpl string) error {
 			}
 			return fallback
 		},
+		"displayTitle": displayTitle,
 	}
 	t, err := template.New("index").Funcs(funcs).Parse(text)
 	if err != nil {

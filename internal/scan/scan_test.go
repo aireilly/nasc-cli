@@ -55,6 +55,9 @@ func TestWalkSkipsAgentFiles(t *testing.T) {
 	writeFile(t, dir, ".claude/commands/y.md", "skip")
 	writeFile(t, dir, "examples/.claude/skills/z/SKILL.md", "skip")
 	writeFile(t, dir, ".cursor/rules.md", "skip")
+	writeFile(t, dir, ".github/PULL_REQUEST_TEMPLATE.md", "skip")
+	writeFile(t, dir, ".github/ISSUE_TEMPLATE/bug.md", "skip")
+	writeFile(t, dir, ".vscode/notes.md", "skip")
 
 	got, err := Walk(Options{Root: dir})
 	if err != nil {

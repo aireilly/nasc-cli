@@ -40,6 +40,23 @@ func TestBuildAndRenderIndex(t *testing.T) {
 	}
 }
 
+func TestDisplayTitleFallsBackToPath(t *testing.T) {
+	cases := []struct {
+		doc  model.Doc
+		want string
+	}{
+		{model.Doc{Path: "docs/auth.md", Title: "Auth flow"}, "Auth flow"},
+		{model.Doc{Path: "RELEASE-NOTES.md"}, "RELEASE-NOTES"},
+		{model.Doc{Path: "pkg/epp/README.md"}, "epp"},
+		{model.Doc{Path: "docs/scheduling/index.md"}, "scheduling"},
+	}
+	for _, c := range cases {
+		if got := displayTitle(c.doc); got != c.want {
+			t.Errorf("displayTitle(%q) = %q, want %q", c.doc.Path, got, c.want)
+		}
+	}
+}
+
 func TestMergeCreatesWhenEmpty(t *testing.T) {
 	out := string(Merge(nil, []byte("BODY\n")))
 	want := BeginMarker + "\nBODY\n" + EndMarker + "\n"

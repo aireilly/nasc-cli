@@ -20,11 +20,12 @@ type Options struct {
 	Exclude []string
 }
 
+// alwaysSkip names non-dot directories that never hold documentation. Dot
+// directories are handled separately: every directory whose name starts with a
+// dot is skipped, so tooling and agent config (.git, .github, .nasc, .claude,
+// .cursor, .vscode, and the like) stays out of the corpus.
 var alwaysSkip = map[string]bool{
-	".git": true, ".nasc": true, "node_modules": true, "vendor": true,
-	// Agent tool directories hold skills, commands, and agent definitions,
-	// not documentation. Skip them wherever they appear in the tree.
-	".claude": true, ".cursor": true,
+	"node_modules": true, "vendor": true,
 }
 
 // alwaysSkipFile names markdown files that are agent instructions or skill
@@ -59,7 +60,7 @@ func Walk(opts Options) ([]string, error) {
 			return nil
 		}
 		if d.IsDir() {
-			if alwaysSkip[d.Name()] {
+			if alwaysSkip[d.Name()] || strings.HasPrefix(d.Name(), ".") {
 				return fs.SkipDir
 			}
 			if gi != nil && gi.MatchesPath(rel+"/") {
