@@ -1,32 +1,20 @@
-# nasc
+# nasc CLI
 
-> **nasc**, *ainmfhocal firinscneach* (masculine noun) — genitive singular **naisc**, plural **naisc**
+> **nasc**, *ainmfhocal firinscneach* (masculine noun): genitive singular **naisc**, plural **naisc**
 > 1. link, tie, bond
 > 2. clasp
 > 3. collar (for tethering an animal)
 >
-> **nasc**, *briathar* (verb) — to bind, to tie, to link, to connect. Verbal noun: **nascadh**.
+> **nasc**, *briathar* (verb): to bind, to tie, to link, to connect. Verbal noun: **nascadh**.
 >
-> *From Irish (Gaeilge).* The tool links a repository's docs to the agents that read them.
+> *From Irish (Gaeilge).* 
 
-`nasc` onboards a repository's existing markdown docs for AI-agent consumption and enforces that markup in CI. It marks docs with agent-navigation metadata, generates an index an agent reads first, and validates the whole corpus against a declared schema.
 
-A single static binary. Offline by default. No database.
+`nasc` is a single static binary that onboards a repository's existing markdown docs for AI-agent consumption and enforces a simple YAML front matter in CI.
+It marks docs with agent-navigation YAML metadata, generates a docs index for agents, and validates the whole docs corpus against a declared schema.
 
-## The problem it solves
-
-AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter. On one measured corpus, 54% of an agent's tool calls went to navigation before any real work began. Cost climbs with every doc you add.
-
-The fix is a cheap metadata layer. Give each doc one line that says when an agent should load it, list those triggers in a top-level index, and the agent can decide what to open without reading everything first. `nasc` produces that layer and keeps it honest in CI.
-
-## The four verbs
-
-| Verb | Command | What it does |
-| --- | --- | --- |
-| Mark | `nasc mark` | Derive agent-navigation metadata for existing docs and write it into frontmatter |
-| Index | `nasc index` | Generate an `AGENTS.md`-style navigation index from the marked docs |
-| Validate | `nasc validate` | Enforce the schema in CI, reporting docs that are not agent-ready |
-| Inspect | `nasc schema infer`, `nasc get` | Understand an unfamiliar corpus and read single values |
+AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
+With `nasc`, agents can decide what to open in repository, without reading everything first.
 
 ## Install
 
@@ -43,8 +31,6 @@ git clone https://github.com/aireilly/nasc-cli
 cd nasc-cli
 go build -o nasc ./cmd/nasc
 ```
-
-The binary is `nasc`. It builds with `CGO_ENABLED=0`, so the result is a static binary you can drop into any CI image.
 
 ## Quick start
 
@@ -72,7 +58,7 @@ Add an optional LLM tier when you want a derived one-line description or tags. `
 nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
 ```
 
-## Commands
+### Commands
 
 ```
 nasc schema init [--preset agent-context|minimal]
@@ -83,6 +69,13 @@ nasc validate [--severity error|warn] [--json]
 nasc get <path> [key]
 nasc doctor
 ```
+
+| Verb     | Command                         | What it does                                                                     |
+| -------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| Inspect  | `nasc schema infer`, `nasc get` | Understand an unfamiliar corpus and read single values                           |
+| Mark     | `nasc mark`                     | Derive agent-navigation metadata for existing docs and write it into frontmatter |
+| Index    | `nasc index`                    | Generate an `AGENTS.md`-style navigation index from the marked docs              |
+| Validate | `nasc validate`                 | Enforce the schema in CI, reporting docs that are not agent-ready                |
 
 ## How it works
 
@@ -98,13 +91,13 @@ Write-back edits frontmatter through a `yaml.Node` round-trip and an atomic file
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| 0 | success, corpus is agent-ready |
-| 1 | success, nothing to do (empty result, empty diff) |
-| 2 | usage error |
-| 3 | validation failure (`validate`, `index --strict`) |
-| 5 | write conflict, a file changed under us during `mark --write` |
+| Code | Meaning                                                       |
+| ---- | ------------------------------------------------------------- |
+| 0    | success, corpus is agent-ready                                |
+| 1    | success, nothing to do (empty result, empty diff)             |
+| 2    | usage error                                                   |
+| 3    | validation failure (`validate`, `index --strict`)             |
+| 5    | write conflict, a file changed under us during `mark --write` |
 
 ## Configuration
 
@@ -127,38 +120,10 @@ output:
   default_format: auto   # auto | table | jsonl
 ```
 
-## What it is not
-
-`nasc` marks, indexes, and validates. It stays out of the neighbouring problems on purpose, so you can compose it with tools that already own them.
-
-| Out of scope | Why |
-| --- | --- |
-| A query language over the corpus | Domain-specific query CLIs win once docs are structured |
-| A persistent database or SQLite index | The three verbs run in memory; there is no query to persist |
-| Selecting elements inside a document | Owned by tools like `mdq` and `mq`; pipe `nasc --paths` into them |
-| Semantic or embedding search | A separate concern with its own tools |
-| Drift detection between docs and code | A saturated space with dedicated products |
-
-No daemon. No network access in the core binary. No MCP server in v0.1.
-
-## Stack
-
-| Concern | Choice |
-| --- | --- |
-| CLI | `spf13/cobra` |
-| YAML | `gopkg.in/yaml.v3` (`yaml.Node` for round-trip edits) |
-| Hashing | `cespare/xxhash/v2` |
-| Ignore rules | `sabhiram/go-gitignore` |
-| Globs | `gobwas/glob` |
-| Git | shells out to `git` |
-| Release | `goreleaser` |
-
-Every library is MIT, BSD, or Apache-2.0.
-
 ## License and attribution
 
 Apache-2.0. See [LICENSE](LICENSE) for the full text.
 
-The convention of writing a doc's `description` as a load-or-skip trigger, rather than a topic summary, was informed by the [code-docs](https://github.com/armstrongl/code-docs) project by Laura Armstrong. No code, configuration, prompt text, or documentation from that project is included in or derived from `nasc`. This project is not affiliated with or endorsed by code-docs.
+The convention of writing a doc's `description` as a load-or-skip trigger, rather than a topic summary, was informed by the [code-docs](https://github.com/armstrongl/code-docs) project by Laura Armstrong. No code, configuration, prompt text, or documentation from that project is included in or derived from `nasc`.
 
 Contributions use a DCO. Sign your commits with `git commit -s`.
