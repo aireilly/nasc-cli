@@ -11,7 +11,6 @@ import (
 
 	"github.com/aireilly/nasc-cli/internal/edit"
 	"github.com/aireilly/nasc-cli/internal/mark"
-	"github.com/aireilly/nasc-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -32,9 +31,9 @@ func newMarkCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			s, _ := schema.Load(filepath.Join(".nasc", "schema.yaml"))
-			if s == nil {
-				s = &schema.Schema{}
+			s, _, serr := loadSchema()
+			if serr != nil {
+				return ExitError{Code: 2, Msg: "schema error: " + serr.Error()}
 			}
 			if llmCmd != "" {
 				cfg.Mark.LLMCmd = llmCmd

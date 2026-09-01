@@ -4,10 +4,9 @@
 package cli
 
 import (
-	"path/filepath"
+	"fmt"
 
 	"github.com/aireilly/nasc-cli/internal/render"
-	"github.com/aireilly/nasc-cli/internal/schema"
 	"github.com/aireilly/nasc-cli/internal/validate"
 	"github.com/spf13/cobra"
 )
@@ -23,9 +22,12 @@ func newValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			s, err := schema.Load(filepath.Join(".nasc", "schema.yaml"))
-			if err != nil {
-				return ExitError{Code: 2, Msg: "no schema: run `nasc schema init` first (" + err.Error() + ")"}
+			s, isDefault, serr := loadSchema()
+			if serr != nil {
+				return ExitError{Code: 2, Msg: "schema error: " + serr.Error()}
+			}
+			if isDefault {
+				fmt.Fprintf(cmd.ErrOrStderr(), "nasc: no .nasc/schema.yaml; validating against the built-in %q default (run `nasc schema init` to customize)\n", defaultPreset)
 			}
 			findings := validate.Check(docs, s, cfg.Root)
 			findings = filterSeverity(findings, minSeverity)

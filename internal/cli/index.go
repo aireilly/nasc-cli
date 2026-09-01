@@ -5,10 +5,8 @@ package cli
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/aireilly/nasc-cli/internal/render"
-	"github.com/aireilly/nasc-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -23,12 +21,22 @@ func newIndexCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			s, serr := schema.Load(filepath.Join(".nasc", "schema.yaml"))
-			// A doc is "unmarked" relative to the schema's required fields, so
-			// --strict is meaningless without one. Fail loudly rather than
-			// silently passing, mirroring validate.
-			if strict && serr != nil {
-				return ExitError{Code: 2, Msg: "no schema: --strict needs a schema; run `nasc schema init` first (" + serr.Error() + ")"}
+			s, isDefault, serr := loadSchema()
+			if serr != nil {
+				return ExitError{Code: 2, Msg: "schema error: " + serr.Error()}
+			}
+			// A doc is "unmarked" relative to the schema's required fields.
+			// --strict gates CI, so it demands a checked-in schema and refuses
+			// the implicit default; run `nasc schema init` to opt in.
+			if strict && isDefault {
+				return ExitError{Code: 2, Msg: "no schema: --strict needs a schema; run `nasc schema init` first"}
+			}
+			// The built-in default is nasc's opinion, not the project's, so it
+			// must not segregate docs into an Unmarked bucket. Only a schema the
+			// project checked in does that. With the implicit default, group
+			// everything nasc can place.
+			if isDefault {
+				s = nil
 			}
 			var tmpl string
 			if tmplPath != "" {

@@ -34,8 +34,10 @@ go build -o nasc ./cmd/nasc
 
 ## Quick start
 
+`mark`, `index`, and `validate` work with no configuration. When there is no `.nasc/schema.yaml`, nasc uses a built-in `agent-context` default. Run `nasc schema init` only when you want to pin or change that schema in the repo.
+
 ```bash
-# Describe what frontmatter your corpus should carry.
+# Optional: pin a schema in the repo so the rules are explicit and reviewable.
 nasc schema init --preset agent-context
 
 # Look at what you already have, and let nasc propose a schema.
