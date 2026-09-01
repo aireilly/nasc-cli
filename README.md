@@ -10,7 +10,7 @@
 > *From Irish (Gaeilge).* 
 
 
-`nasc` onboards a repository's existing markdown docs for AI agent consumption and enforces a simple YAML front matter in CI.
+`nasc` onboards a repository's existing markdown docs for people and AI agents by reading, writing and enforcing a simple YAML front matter.
 It marks docs with agent-friendly YAML metadata, generates a docs index for agents, and validates the whole docs corpus against a declared schema.
 
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
@@ -122,7 +122,7 @@ The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and
 
 ## Continuous integration
 
-The happy path in CI is one command: `nasc validate`. It reads every doc, checks it against the schema (the built-in `agent-context` default, or your `.nasc/schema.yaml`), and exits 3 when a doc breaks a rule. A non-zero exit fails the job, so a pull request that adds an unmarked or malformed doc is caught before it merges.
+`nasc validate` reads every doc, checks it against the schema, and exits 3 when a doc breaks a rule. A non-zero exit fails the job, so a pull request that adds an unmarked or malformed doc is caught before it merges.
 
 ```yaml
 # .github/workflows/docs.yml
