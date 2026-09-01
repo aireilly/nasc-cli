@@ -189,6 +189,10 @@ exclude: ["CHANGELOG.md", "node_modules/**"]
 mark:
   llm_cmd: ""
   llm_excerpt_bytes: 2000   # bytes of each doc sent to the llm; 0 sends the whole file
+  llm_prompt: ""          # opening instruction for the llm; empty uses the default below:
+  # "You are generating navigation metadata for a documentation file. It serves two
+  #  readers at once: a human skimming an index to find the right doc, and an AI agent
+  #  deciding whether to load it. Write for both."
 
 index:
   template: templates/agents-index.tmpl
@@ -198,7 +202,9 @@ output:
   default_format: auto   # auto | table | jsonl
 ```
 
-`llm_excerpt_bytes` caps how much of each document body reaches the LLM when deriving fields. Set it to `0` to send the whole file, which helps when a good description depends on context buried deep in a long document. Expect larger prompts and higher token cost in return.
+`llm_excerpt_bytes` caps how much of each document body reaches the LLM when deriving fields. Set it to `0` to send the whole file.
+
+`llm_prompt` is the opening instruction that frames the task for the model. Leave it unset to use the built-in default.
 
 ```yaml
 mark:
