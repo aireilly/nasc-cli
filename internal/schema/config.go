@@ -19,6 +19,7 @@ type Config struct {
 	Mark    struct {
 		LLMCmd          string `yaml:"llm_cmd"`
 		LLMExcerptBytes int    `yaml:"llm_excerpt_bytes"`
+		LLMPrompt       string `yaml:"llm_prompt"`
 	} `yaml:"mark"`
 	Index struct {
 		Template string `yaml:"template"`

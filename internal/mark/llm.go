@@ -22,6 +22,17 @@ var LLMCmd string
 // sets it from config before Plan runs the llm tier.
 var LLMExcerptBytes int
 
+// DefaultLLMPrompt is the opening instruction buildPrompt prepends to every
+// request. It frames the task for the model; the machinery that follows (the
+// JSON contract, field meanings, and doc context) is fixed. Config may override
+// it via mark.llm_prompt.
+const DefaultLLMPrompt = "You are generating navigation metadata for a documentation file. It serves two readers at once: a human skimming an index to find the right doc, and an AI agent deciding whether to load it. Write for both."
+
+// LLMPrompt is the opening instruction sent to the llm. The mark command sets it
+// from config before Plan runs the llm tier; an empty value falls back to
+// DefaultLLMPrompt.
+var LLMPrompt string
+
 // LLMRequest is the JSON written to the subprocess stdin.
 type LLMRequest struct {
 	Path    string                  `json:"path"`
@@ -78,7 +89,11 @@ func RunLLM(cmdline string, req LLMRequest) (map[string]model.Value, error) {
 // excerpt as context. The caller's --llm-cmd need only be a bare agent CLI.
 func buildPrompt(req LLMRequest) string {
 	var b strings.Builder
-	b.WriteString("You are generating navigation metadata for a documentation file. It serves two readers at once: a human skimming an index to find the right doc, and an AI agent deciding whether to load it. Write for both.\n\n")
+	prompt := LLMPrompt
+	if prompt == "" {
+		prompt = DefaultLLMPrompt
+	}
+	b.WriteString(prompt + "\n\n")
 	b.WriteString("File: " + req.Path + "\n")
 	if req.Title != "" {
 		b.WriteString("Title: " + req.Title + "\n")
