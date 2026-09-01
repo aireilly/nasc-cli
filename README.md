@@ -1,4 +1,4 @@
-# nasc CLI
+# nasc
 
 > **nasc**, *ainmfhocal firinscneach* (masculine noun): genitive singular **naisc**, plural **naisc**
 > 1. link, tie, bond
@@ -10,7 +10,7 @@
 > *From Irish (Gaeilge).* 
 
 
-`nasc` onboards a repository's existing markdown docs for people and AI agents by reading, writing, and enforcing a simple YAML front matter.
+`nasc` is a CLI that onboards a repository's existing markdown docs for people and AI agents by reading, writing, and enforcing a simple YAML front matter.
 It marks docs with agent-friendly YAML metadata, generates a docs index for agents, and validates the whole docs corpus against a declared schema.
 
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
