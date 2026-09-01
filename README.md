@@ -16,6 +16,30 @@ It marks docs with agent-friendly YAML metadata, generates a docs index for agen
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
 With `nasc`, agents can decide what to open in repository, without reading everything first.
 
+Example nasc output: [deploy/environments/dev/README.md](https://github.com/aireilly/llm-d-router/pull/1/changes#diff-b9160b43898398c21be85b07a1659f6b5fd93b18df7b8a814e6f48c2aefe2621R1-R19).
+
+```yaml
+---
+description: Learn how to use dev Kustomize overlays to deploy vLLM in EPD, P/D, E/PD, and fully disaggregated scenarios on KIND or e2e tests.
+id: readme
+lastUpdated: 2026-07-16
+owner: '@llm-d/router-maintainers'
+tags:
+  - kustomize
+  - vllm
+  - disaggregation
+  - kind
+  - e2e
+  - overlays
+  - deployment
+  - dev-environment
+title: Development Environment Overlays
+type: dev
+---
+```
+
+
+
 ## Install
 
 Requires Go 1.25 or newer.
