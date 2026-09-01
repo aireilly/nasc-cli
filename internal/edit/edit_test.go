@@ -36,6 +36,27 @@ func TestSetAppendsKeyAndRecordsDerived(t *testing.T) {
 	}
 }
 
+func TestSetWritesDateUnquotedSoItRoundTripsAsDate(t *testing.T) {
+	orig := []byte("---\ntitle: Auth\n---\nbody\n")
+	out, err := Set(orig, map[string]model.Value{
+		"lastUpdated": {Kind: model.KindDate, Str: "2026-02-26"},
+	}, []string{"lastUpdated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), `"2026-02-26"`) {
+		t.Fatalf("date written quoted; it will re-parse as string: %q", out)
+	}
+	doc := parse.File("x.md", out)
+	v, ok := doc.Field("lastUpdated")
+	if !ok {
+		t.Fatalf("lastUpdated missing: %q", out)
+	}
+	if v.Kind != model.KindDate {
+		t.Fatalf("lastUpdated kind = %d, want KindDate (%d); out=%q", v.Kind, model.KindDate, out)
+	}
+}
+
 func TestSetInsertsBlockWhenNoFrontmatter(t *testing.T) {
 	orig := []byte("# Heading\n\nbody\n")
 	out, err := Set(orig, map[string]model.Value{

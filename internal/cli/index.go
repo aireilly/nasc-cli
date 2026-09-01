@@ -23,7 +23,13 @@ func newIndexCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			s, _ := schema.Load(filepath.Join(".nasc", "schema.yaml"))
+			s, serr := schema.Load(filepath.Join(".nasc", "schema.yaml"))
+			// A doc is "unmarked" relative to the schema's required fields, so
+			// --strict is meaningless without one. Fail loudly rather than
+			// silently passing, mirroring validate.
+			if strict && serr != nil {
+				return ExitError{Code: 2, Msg: "no schema: --strict needs a schema; run `nasc schema init` first (" + serr.Error() + ")"}
+			}
 			var tmpl string
 			if tmplPath != "" {
 				b, rerr := os.ReadFile(tmplPath)
@@ -54,6 +60,6 @@ func newIndexCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&output, "output", "", "write to a file instead of stdout")
 	c.Flags().StringVar(&tmplPath, "template", "", "custom Go text/template")
-	c.Flags().BoolVar(&strict, "strict", false, "exit 3 if any doc is unmarked")
+	c.Flags().BoolVar(&strict, "strict", false, "exit 3 if any doc is missing schema-required fields (needs a schema)")
 	return c
 }

@@ -120,7 +120,10 @@ func valueNode(v model.Value) *yaml.Node {
 		}
 		return n
 	case model.KindDate:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v.Str}
+		// Tag as a timestamp, not a string, so the encoder emits the ISO date
+		// unquoted. A quoted value re-parses as !!str (KindString) and fails
+		// validate's date type check.
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: v.Str}
 	default:
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v.String()}
 	}
