@@ -1,6 +1,6 @@
 module github.com/aireilly/nasc-cli
 
-go 1.25.12
+go 1.27.0
 
 require (
 	github.com/gobwas/glob v1.0.0
