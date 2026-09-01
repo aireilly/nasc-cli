@@ -120,6 +120,29 @@ The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and
 
 `nasc index --output AGENTS.md` merges rather than overwrites.
 
+## Continuous integration
+
+The happy path in CI is one command: `nasc validate`. It reads every doc, checks it against the schema (the built-in `agent-context` default, or your `.nasc/schema.yaml`), and exits 3 when a doc breaks a rule. A non-zero exit fails the job, so a pull request that adds an unmarked or malformed doc is caught before it merges.
+
+```yaml
+# .github/workflows/docs.yml
+name: docs
+on: [pull_request]
+
+jobs:
+  nasc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go install github.com/aireilly/nasc-cli/cmd/nasc@latest
+      - run: nasc validate
+```
+
+Add `nasc index --output AGENTS.md --strict` as a second step once a schema is checked in, and the job also fails when a doc is missing schema-required fields. Generate descriptions with the `llm` tier in a local `nasc mark` run and commit the result; CI stays deterministic and needs no API key.
+
 ## Exit codes
 
 | Code | Meaning                                                       |
