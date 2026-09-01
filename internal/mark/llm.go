@@ -34,11 +34,10 @@ func RunLLM(cmdline string, req LLMRequest) (map[string]model.Value, error) {
 		return nil, fmt.Errorf("empty llm command")
 	}
 	cmd := exec.Command(fields[0], fields[1:]...)
-	in, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	cmd.Stdin = bytes.NewReader(in)
+	// nasc supplies the whole instruction itself, so a bare agent CLI like
+	// `claude -p` works with no wrapper: the prompt on stdin states the
+	// JSON-only contract and carries the doc context.
+	cmd.Stdin = strings.NewReader(buildPrompt(req))
 	var out, errbuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errbuf
@@ -47,7 +46,7 @@ func RunLLM(cmdline string, req LLMRequest) (map[string]model.Value, error) {
 	}
 
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(out.Bytes(), &raw); err != nil {
+	if err := json.Unmarshal(extractJSON(out.Bytes()), &raw); err != nil {
 		return nil, fmt.Errorf("llm output is not JSON: %w", err)
 	}
 	result := map[string]model.Value{}
@@ -66,6 +65,68 @@ func RunLLM(cmdline string, req LLMRequest) (map[string]model.Value, error) {
 		result[key] = v
 	}
 	return result, nil
+}
+
+// buildPrompt renders the request into a self-contained instruction. It states
+// the JSON-only output contract, names each requested field with its meaning and
+// schema length bounds, and includes the document's path, title, type, and
+// excerpt as context. The caller's --llm-cmd need only be a bare agent CLI.
+func buildPrompt(req LLMRequest) string {
+	var b strings.Builder
+	b.WriteString("You are generating navigation metadata for a documentation file so that AI agents can decide when to load it.\n\n")
+	b.WriteString("File: " + req.Path + "\n")
+	if req.Title != "" {
+		b.WriteString("Title: " + req.Title + "\n")
+	}
+	if req.Type != "" {
+		b.WriteString("Type: " + req.Type + "\n")
+	}
+	if req.Excerpt != "" {
+		b.WriteString("\nExcerpt:\n" + req.Excerpt + "\n")
+	}
+	b.WriteString("\nReturn ONLY a single JSON object, with no prose and no markdown fences, containing exactly these keys:\n")
+	for _, w := range req.Want {
+		switch w {
+		case "description":
+			line := "  \"description\": one sentence stating the condition under which an agent should load this doc, phrased as a trigger, not a topic summary."
+			if bounds := lengthHint(req.Schema[w]); bounds != "" {
+				line += " " + bounds
+			}
+			b.WriteString(line + "\n")
+		case "tags":
+			b.WriteString("  \"tags\": an array of short lowercase topic strings.\n")
+		default:
+			b.WriteString("  \"" + w + "\": a concise, accurate value.\n")
+		}
+	}
+	return b.String()
+}
+
+// lengthHint describes a field's character bounds in plain words, or "" when the
+// field sets none.
+func lengthHint(f schema.Field) string {
+	switch {
+	case f.MinLength > 0 && f.MaxLength > 0:
+		return fmt.Sprintf("Between %d and %d characters.", f.MinLength, f.MaxLength)
+	case f.MinLength > 0:
+		return fmt.Sprintf("At least %d characters.", f.MinLength)
+	case f.MaxLength > 0:
+		return fmt.Sprintf("At most %d characters.", f.MaxLength)
+	default:
+		return ""
+	}
+}
+
+// extractJSON returns the outermost {...} object from b, tolerating surrounding
+// prose or markdown fences that agents sometimes add. When no braces are found
+// it returns b unchanged so the caller's JSON parse reports the real error.
+func extractJSON(b []byte) []byte {
+	start := bytes.IndexByte(b, '{')
+	end := bytes.LastIndexByte(b, '}')
+	if start < 0 || end < start {
+		return b
+	}
+	return b[start : end+1]
 }
 
 func coerceLLM(raw json.RawMessage) (model.Value, bool) {
