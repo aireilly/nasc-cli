@@ -70,13 +70,9 @@ Run it by adding `llm` to `--tier` and passing the CLI to shell out to:
 nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
 ```
 
-`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body, then asks for a single JSON object with only the fields it requested and the character bounds each one must respect. Whatever prose or code fences the agent wraps around that object are stripped before the values are validated against the schema. A value that breaks its length bounds is dropped rather than written.
+`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body
 
-The prompt tells the agent to write each description for two readers at once, a person skimming an index and an agent deciding whether to load the doc, in direct active language. Task and tutorial docs come back as `Learn how to ...` and conceptual or reference docs as `Learn about ...`. For example:
-
-```yaml
-description: Learn how to implement a custom observer for quantization calibration or extend how weight and activation statistics are accumulated in llm-compressor.
-```
+The prompt tells the agent to write file descriptions in direct active language.
 
 The LLM tier is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present. Set `llm_cmd` and `llm_excerpt_bytes` under `mark:` in `.nasc/config.yaml` to make the command and excerpt size defaults.
 
@@ -120,9 +116,9 @@ Available Commands:
 walk repo → parse each doc (frontmatter + body) → one of { mark | index | validate }
 ```
 
-The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and always skips `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so `nasc` never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, any `SKILL.md`, and everything under a `.claude/` or `.cursor/` directory. Parsers produce a `Doc` per file. `nasc` then reads and updates the repo markdown as required.
+The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and always skips `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so `nasc` never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, any `SKILL.md`, and everything under a `.claude/` or `.cursor/` directory.
 
-`nasc index --output AGENTS.md` merges rather than overwrites. The generated content lives between `<!-- BEGIN nasc index -->` and `<!-- END nasc index -->` markers. On the first run the block is appended to any existing file; on later runs only that region is refreshed, so a hand-written `AGENTS.md` keeps its prose. This is also why `AGENTS.md` is on the skip list: the index never lists itself.
+`nasc index --output AGENTS.md` merges rather than overwrites.
 
 ## Exit codes
 
