@@ -41,7 +41,7 @@ func newMarkCmd() *cobra.Command {
 			}
 			mark.LLMCmd = cfg.Mark.LLMCmd
 			tiers := splitCSV(tierCSV)
-			results := mark.Plan(docs, s, cfg.Root, tiers)
+			results := mark.Plan(docs, s, cfg.Root, tiers, force)
 			if len(results) == 0 {
 				return ExitError{Code: 1, Msg: "nothing to mark"}
 			}

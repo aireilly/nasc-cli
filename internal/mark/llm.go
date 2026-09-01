@@ -92,7 +92,10 @@ func withinBounds(v model.Value, f schema.Field) bool {
 }
 
 // LLMTier builds a request for llm-derived fields the doc lacks and runs it.
-func LLMTier(d model.Doc, s *schema.Schema, root string) map[string]model.Value {
+// Unlike the deterministic tiers it never auto-refreshes owned fields: LLM
+// output is nondeterministic, so re-generating on every run would churn the
+// corpus. It fills absent fields, and force overwrites human-set ones.
+func LLMTier(d model.Doc, s *schema.Schema, root string, owned map[string]bool, force bool) map[string]model.Value {
 	if LLMCmd == "" || s == nil {
 		return map[string]model.Value{}
 	}
@@ -102,7 +105,7 @@ func LLMTier(d model.Doc, s *schema.Schema, root string) map[string]model.Value 
 		if f.Derive != "llm" {
 			continue
 		}
-		if _, ok := d.Field(name); ok {
+		if !shouldSet(d, name, owned, force, false) {
 			continue
 		}
 		want = append(want, name)

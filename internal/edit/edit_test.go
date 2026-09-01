@@ -25,7 +25,7 @@ func TestSetAppendsKeyAndRecordsDerived(t *testing.T) {
 	if !strings.Contains(s, "type: architecture") {
 		t.Fatalf("type not written: %q", s)
 	}
-	if !strings.Contains(s, "x-nasc-derived") {
+	if !strings.Contains(s, "x-nasc-generated") {
 		t.Fatalf("provenance not recorded: %q", s)
 	}
 	if !strings.HasSuffix(s, "body text\n") {
@@ -136,7 +136,7 @@ func TestSetListItemWithEmbeddedCommaSpaceRoundTrips(t *testing.T) {
 // TestSetDerivedOnlyWritesDerivedBlock is a regression test for a bug where
 // a call with empty updates but non-empty derived against a file with
 // parseable frontmatter was silently dropped (returned unchanged) instead
-// of writing the x-nasc-derived block.
+// of writing the x-nasc-generated block.
 func TestSetDerivedOnlyWritesDerivedBlock(t *testing.T) {
 	orig := []byte("---\ntitle: t\n---\nbody\n")
 	out, err := Set(orig, map[string]model.Value{}, []string{"type"})
@@ -146,7 +146,7 @@ func TestSetDerivedOnlyWritesDerivedBlock(t *testing.T) {
 	if bytes.Equal(out, orig) {
 		t.Fatalf("derived-only write was dropped: output unchanged")
 	}
-	if !strings.Contains(string(out), "x-nasc-derived") {
+	if !strings.Contains(string(out), "x-nasc-generated") {
 		t.Fatalf("derived block missing: %q", out)
 	}
 	if !strings.Contains(string(out), "type") {

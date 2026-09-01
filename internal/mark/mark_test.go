@@ -30,7 +30,7 @@ func TestFileTierFillsAbsentOnly(t *testing.T) {
 		Headings: []model.Heading{{Level: 1, Text: "Auth flow"}},
 		Fields:   map[string]model.Value{"title": {Kind: model.KindString, Str: "Human title"}},
 	}
-	up := FileTier(d)
+	up := FileTier(d, nil, false)
 	if _, ok := up["title"]; ok {
 		t.Fatalf("title is human-set and must not be overwritten")
 	}
@@ -42,13 +42,65 @@ func TestFileTierFillsAbsentOnly(t *testing.T) {
 	}
 }
 
+// A field nasc owns (listed in x-nasc-generated) is refreshed when the derived
+// value changes: here the H1 moved on, so title is re-derived.
+func TestPlanRefreshesOwnedFields(t *testing.T) {
+	d := model.Doc{
+		Path: "docs/auth.md", Type: "docs",
+		Headings: []model.Heading{{Level: 1, Text: "New title"}},
+		Fields: map[string]model.Value{
+			"title":            {Kind: model.KindString, Str: "Old title"},
+			"x-nasc-generated": {Kind: model.KindList, Str: `["title"]`},
+		},
+	}
+	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, false)
+	if len(results) != 1 {
+		t.Fatalf("expected one result, got %d", len(results))
+	}
+	if results[0].Updates["title"].Str != "New title" {
+		t.Fatalf("owned title should refresh to the new H1, got %q", results[0].Updates["title"].Str)
+	}
+}
+
+// A human-set field (present but not in x-nasc-generated) is never touched
+// without force, even when the derived value differs.
+func TestPlanPreservesHumanFields(t *testing.T) {
+	d := model.Doc{
+		Path: "docs/auth.md", Type: "docs",
+		Headings: []model.Heading{{Level: 1, Text: "New title"}},
+		Fields:   map[string]model.Value{"title": {Kind: model.KindString, Str: "Human title"}},
+	}
+	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, false)
+	for _, r := range results {
+		if _, ok := r.Updates["title"]; ok {
+			t.Fatalf("human-set title must be preserved, got update %q", r.Updates["title"].Str)
+		}
+	}
+}
+
+// force overwrites even a human-set field.
+func TestPlanForceOverwritesHumanFields(t *testing.T) {
+	d := model.Doc{
+		Path: "docs/auth.md", Type: "docs",
+		Headings: []model.Heading{{Level: 1, Text: "New title"}},
+		Fields:   map[string]model.Value{"title": {Kind: model.KindString, Str: "Human title"}},
+	}
+	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, true)
+	if len(results) != 1 {
+		t.Fatalf("expected one result, got %d", len(results))
+	}
+	if results[0].Updates["title"].Str != "New title" {
+		t.Fatalf("force should overwrite title, got %q", results[0].Updates["title"].Str)
+	}
+}
+
 func TestPlanSkipsDocsWithNothingToDo(t *testing.T) {
 	d := model.Doc{
 		Path:   "docs/a.md",
 		Fields: map[string]model.Value{"id": {Kind: model.KindString, Str: "a"}, "title": {Kind: model.KindString, Str: "A"}, "type": {Kind: model.KindString, Str: "docs"}},
 		Title:  "A", Type: "docs",
 	}
-	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"})
+	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, false)
 	if len(results) != 0 {
 		t.Fatalf("expected no results, got %v", results)
 	}
@@ -61,7 +113,7 @@ func TestPlanDoesNotMutateCallerFields(t *testing.T) {
 	fields := map[string]model.Value{}
 	d := model.Doc{Path: "docs/auth.md", Title: "Auth flow", Type: "docs", Fields: fields}
 
-	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"})
+	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, false)
 	if len(results) == 0 {
 		t.Fatal("expected the doc to gain fields")
 	}
@@ -77,7 +129,7 @@ func TestPlanDoesNotMutateCallerFields(t *testing.T) {
 // merged view is written into the freshly cloned map.
 func TestPlanHandlesNilFields(t *testing.T) {
 	d := model.Doc{Path: "docs/auth.md", Title: "Auth flow", Type: "docs", Fields: nil}
-	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"})
+	results := Plan([]model.Doc{d}, schemaFor(t), ".", []string{"file"}, false)
 	if len(results) == 0 {
 		t.Fatal("expected results for a doc with nil Fields")
 	}

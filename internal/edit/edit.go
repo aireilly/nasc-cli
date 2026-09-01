@@ -15,7 +15,7 @@ import (
 
 // Set applies updates to a document's frontmatter, preserving key order,
 // comments, quoting, and line endings, and never touching the body. Keys in
-// derived are recorded under x-nasc-derived.
+// derived are recorded under x-nasc-generated.
 func Set(original []byte, updates map[string]model.Value, derived []string) ([]byte, error) {
 	// TOP GUARD: no-op for empty updates and no derived keys. This is the
 	// only no-op condition; nothing else short-circuits before the real edit
@@ -135,7 +135,7 @@ func mergeDerived(m *yaml.Node, derived []string) {
 		set[d] = true
 	}
 	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == "x-nasc-derived" {
+		if m.Content[i].Value == "x-nasc-generated" {
 			for _, e := range m.Content[i+1].Content {
 				set[e.Value] = true
 			}
@@ -144,7 +144,7 @@ func mergeDerived(m *yaml.Node, derived []string) {
 		}
 	}
 	m.Content = append(m.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x-nasc-derived"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "x-nasc-generated"},
 		derivedNode(set))
 }
 
