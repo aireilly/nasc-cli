@@ -22,25 +22,25 @@ func cloneFields(m map[string]model.Value) map[string]model.Value {
 	return out
 }
 
-// Plan runs the requested tiers over docs and returns one Result per doc that
-// gained or refreshed a field. Tiers run in order: they fill absent keys, the
-// git tier refreshes lastUpdated, and force overwrites present keys. Later tiers
-// see earlier tiers' additions through the merged view.
-func Plan(docs []model.Doc, s *schema.Schema, root string, tiers []string, force bool) []Result {
+// Plan runs the requested sources over docs and returns one Result per doc that
+// gained or refreshed a field. Sources run in order: they fill absent keys, the
+// git source refreshes lastUpdated, and force overwrites present keys. Later
+// sources see earlier sources' additions through the merged view.
+func Plan(docs []model.Doc, s *schema.Schema, root string, sources []string, force bool) []Result {
 	var out []Result
 	for _, d := range docs {
 		merged := map[string]model.Value{}
 		view := d
 		view.Fields = cloneFields(d.Fields)
-		for _, tier := range tiers {
+		for _, source := range sources {
 			var up map[string]model.Value
-			switch tier {
+			switch source {
 			case "file":
-				up = FileTier(view, force)
+				up = FileSource(view, force)
 			case "git":
-				up = GitTier(view, root, force)
+				up = GitSource(view, root, force)
 			case "llm":
-				up = LLMTier(view, s, root, force)
+				up = LLMSource(view, s, root, force)
 			}
 			for k, v := range up {
 				// Skip refreshes that would not change the value, so a re-run
@@ -49,7 +49,7 @@ func Plan(docs []model.Doc, s *schema.Schema, root string, tiers []string, force
 					continue
 				}
 				merged[k] = v
-				view.Fields[k] = v // so the next tier sees it as present
+				view.Fields[k] = v // so the next source sees it as present
 			}
 		}
 		if len(merged) == 0 {

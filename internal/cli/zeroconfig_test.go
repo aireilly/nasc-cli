@@ -67,7 +67,7 @@ func TestIndexWithoutSchemaGroupsLeniently(t *testing.T) {
 	}
 }
 
-// The llm tier does real work with no schema present: the default supplies the
+// The llm source does real work with no schema present: the default supplies the
 // llm-derived fields, so a bare agent command can fill a description.
 func TestMarkLLMWithoutSchemaUsesDefault(t *testing.T) {
 	stub, err := filepath.Abs(filepath.Join("..", "..", "testdata", "stub-llm", "main.go"))
@@ -84,12 +84,12 @@ func TestMarkLLMWithoutSchemaUsesDefault(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"mark", "--tier", "llm", "--llm-cmd", "go run " + stub, "--write"})
+	cmd.SetArgs([]string{"mark", "--source", "llm", "--llm-cmd", "go run " + stub, "--write"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("mark llm without a schema should succeed, got %v", err)
 	}
 	got, _ := os.ReadFile(filepath.Join("guides", "a.md"))
 	if !strings.Contains(string(got), "description:") {
-		t.Fatalf("expected the llm tier to add a description, got:\n%s", got)
+		t.Fatalf("expected the llm source to add a description, got:\n%s", got)
 	}
 }

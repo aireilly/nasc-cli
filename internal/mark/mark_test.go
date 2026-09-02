@@ -22,7 +22,7 @@ fields:
 	return s
 }
 
-func TestFileTierFillsAbsentOnly(t *testing.T) {
+func TestFileSourceFillsAbsentOnly(t *testing.T) {
 	d := model.Doc{
 		Path:     "docs/auth.md",
 		Title:    "Auth flow",
@@ -30,7 +30,7 @@ func TestFileTierFillsAbsentOnly(t *testing.T) {
 		Headings: []model.Heading{{Level: 1, Text: "Auth flow"}},
 		Fields:   map[string]model.Value{"title": {Kind: model.KindString, Str: "Human title"}},
 	}
-	up := FileTier(d, false)
+	up := FileSource(d, false)
 	if _, ok := up["title"]; ok {
 		t.Fatalf("title is human-set and must not be overwritten")
 	}

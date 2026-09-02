@@ -68,8 +68,8 @@ nasc schema init --preset agent-context
 nasc schema infer --write
 
 # Backfill metadata from file facts and git history. Review the patch before writing.
-nasc mark --tier file,git --patch
-nasc mark --tier file,git --write
+nasc mark --source file,git --patch
+nasc mark --source file,git --write
 
 # Generate the index agents read first.
 nasc index --output AGENTS.md
@@ -78,34 +78,34 @@ nasc index --output AGENTS.md
 nasc validate
 ```
 
-Add an optional LLM tier when you want a derived one-line description or tags. `nasc` never vendors an SDK or holds an API key. It shells out to an agent CLI you already run:
+Add an optional LLM source when you want a derived one-line description or tags. `nasc` never vendors an SDK or holds an API key. It shells out to an agent CLI you already run:
 
 ```bash
-nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
+nasc mark --source file,git,llm --llm-cmd "claude -p" --patch
 ```
 
 ### Generating descriptions with LLM
 
-The `description` field is what a human scanning `AGENTS.md`, or an agent choosing what to open, reads first. The `file` and `git` tiers cannot write it, because it takes reading the doc to say what the doc teaches. That is the job of the `llm` tier.
+The `description` field is what a human scanning `AGENTS.md`, or an agent choosing what to open, reads first. The `file` and `git` sources cannot write it, because it takes reading the doc to say what the doc teaches. That is the job of the `llm` source.
 
-Run it by adding `llm` to `--tier` and passing the CLI to shell out to:
+Run it by adding `llm` to `--source` and passing the CLI to shell out to:
 
 ```bash
-nasc mark --tier file,git,llm --llm-cmd "claude -p" --patch
+nasc mark --source file,git,llm --llm-cmd "claude -p" --patch
 ```
 
 `--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body
 
 The prompt tells the agent to write file descriptions in direct active language.
 
-The LLM tier is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present. Set `llm_cmd` and `llm_excerpt_bytes` under `mark:` in `.nasc/config.yaml` to make the command and excerpt size defaults.
+The LLM source is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present. Set `llm_cmd` and `llm_excerpt_bytes` under `mark:` in `.nasc/config.yaml` to make the command and excerpt size defaults.
 
 ### Commands
 
 ```bash
 nasc schema init [--preset agent-context|minimal]
 nasc schema infer [--write]
-nasc mark [--tier file,git,llm] [--dry-run|--write|--patch] [--llm-cmd <cmd>] [--force]
+nasc mark [--source file,git,llm] [--dry-run|--write|--patch] [--llm-cmd <cmd>] [--force]
 nasc index [--output <file>] [--template <file>] [--strict]
 nasc validate [--severity error|warn] [--json]
 nasc get <path> [key]
@@ -165,7 +165,7 @@ jobs:
       - run: nasc validate
 ```
 
-Add `nasc index --output AGENTS.md --strict` as a second step once a schema is checked in, and the job also fails when a doc is missing schema-required fields. Generate descriptions with the `llm` tier in a local `nasc mark` run and commit the result; CI stays deterministic and needs no API key.
+Add `nasc index --output AGENTS.md --strict` as a second step once a schema is checked in, and the job also fails when a doc is missing schema-required fields. Generate descriptions with the `llm` source in a local `nasc mark` run and commit the result; CI stays deterministic and needs no API key.
 
 ## Exit codes
 

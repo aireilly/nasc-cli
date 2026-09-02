@@ -21,7 +21,7 @@ import (
 var afterReadHook func(path string)
 
 func newMarkCmd() *cobra.Command {
-	var tierCSV, llmCmd string
+	var sourceCSV, llmCmd string
 	var write, patch, force, dryRun bool
 	c := &cobra.Command{
 		Use:   "mark",
@@ -41,8 +41,8 @@ func newMarkCmd() *cobra.Command {
 			mark.LLMCmd = cfg.Mark.LLMCmd
 			mark.LLMExcerptBytes = cfg.Mark.LLMExcerptBytes
 			mark.LLMPrompt = cfg.Mark.LLMPrompt
-			tiers := splitCSV(tierCSV)
-			results := mark.Plan(docs, s, cfg.Root, tiers, force)
+			sources := splitCSV(sourceCSV)
+			results := mark.Plan(docs, s, cfg.Root, sources, force)
 			if len(results) == 0 {
 				return ExitError{Code: 1, Msg: "nothing to mark"}
 			}
@@ -92,11 +92,11 @@ func newMarkCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&tierCSV, "tier", "file,git", "comma-separated tiers: file,git,llm")
+	c.Flags().StringVar(&sourceCSV, "source", "file,git", "comma-separated sources: file,git,llm")
 	c.Flags().BoolVar(&write, "write", false, "apply changes in place")
 	c.Flags().BoolVar(&patch, "patch", false, "emit a unified diff (default when not writing)")
 	c.Flags().BoolVar(&dryRun, "dry-run", true, "print the diff without writing (default)")
-	c.Flags().StringVar(&llmCmd, "llm-cmd", "", "subprocess for the llm tier, e.g. 'claude -p'")
+	c.Flags().StringVar(&llmCmd, "llm-cmd", "", "subprocess for the llm source, e.g. 'claude -p'")
 	c.Flags().BoolVar(&force, "force", false, "overwrite human-set values (loud, not default)")
 	return c
 }

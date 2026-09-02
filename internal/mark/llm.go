@@ -14,12 +14,12 @@ import (
 	"github.com/aireilly/nasc-cli/internal/schema"
 )
 
-// LLMCmd is set by the mark command before Plan runs the llm tier.
+// LLMCmd is set by the mark command before Plan runs the llm source.
 var LLMCmd string
 
 // LLMExcerptBytes caps how many bytes of each doc body are sent to the llm as
 // context. Zero or less means send the whole file untruncated. The mark command
-// sets it from config before Plan runs the llm tier.
+// sets it from config before Plan runs the llm source.
 var LLMExcerptBytes int
 
 // DefaultLLMPrompt is the opening instruction buildPrompt prepends to every
@@ -29,7 +29,7 @@ var LLMExcerptBytes int
 const DefaultLLMPrompt = "You are generating navigation metadata for a documentation file. It serves two readers at once: a human skimming an index to find the right doc, and an AI agent deciding whether to load it. Write for both."
 
 // LLMPrompt is the opening instruction sent to the llm. The mark command sets it
-// from config before Plan runs the llm tier; an empty value falls back to
+// from config before Plan runs the llm source; an empty value falls back to
 // DefaultLLMPrompt.
 var LLMPrompt string
 
@@ -172,11 +172,11 @@ func withinBounds(v model.Value, f schema.Field) bool {
 	return true
 }
 
-// LLMTier builds a request for llm-derived fields the doc lacks and runs it.
+// LLMSource builds a request for llm-derived fields the doc lacks and runs it.
 // Its output is nondeterministic, so it never refreshes a field that is already
 // present: re-generating on every run would churn the corpus. It fills absent
 // fields, and force overwrites present ones.
-func LLMTier(d model.Doc, s *schema.Schema, root string, force bool) map[string]model.Value {
+func LLMSource(d model.Doc, s *schema.Schema, root string, force bool) map[string]model.Value {
 	if LLMCmd == "" || s == nil {
 		return map[string]model.Value{}
 	}

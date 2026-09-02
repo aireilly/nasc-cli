@@ -47,7 +47,7 @@ func TestMarkWriteConflictReturnsExitCode5(t *testing.T) {
 	t.Cleanup(func() { afterReadHook = nil })
 
 	cmd := NewRootCmd()
-	cmd.SetArgs([]string{"mark", "--tier", "file", "--write"})
+	cmd.SetArgs([]string{"mark", "--source", "file", "--write"})
 	err := cmd.Execute()
 
 	var ec ExitError
@@ -81,7 +81,7 @@ func TestMarkNothingToMarkReturnsExitCode1(t *testing.T) {
 
 	before, _ := os.ReadFile(filepath.Join("docs", "auth.md"))
 	cmd := NewRootCmd()
-	cmd.SetArgs([]string{"mark", "--tier", "file", "--write"})
+	cmd.SetArgs([]string{"mark", "--source", "file", "--write"})
 	err := cmd.Execute()
 
 	var ec ExitError
@@ -98,7 +98,7 @@ func runMark(t *testing.T) string {
 	t.Helper()
 	before, _ := os.ReadFile(filepath.Join("docs", "auth.md"))
 	cmd := NewRootCmd()
-	cmd.SetArgs([]string{"mark", "--tier", "file", "--write"})
+	cmd.SetArgs([]string{"mark", "--source", "file", "--write"})
 	_ = cmd.Execute()
 	after, _ := os.ReadFile(filepath.Join("docs", "auth.md"))
 	if string(before) == string(after) {

@@ -15,7 +15,7 @@ import (
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // shouldSet reports whether a derivable field should be written. A field is set
-// when it is absent, when the tier always refreshes it (a value nasc owns
+// when it is absent, when the source always refreshes it (a value nasc owns
 // outright, such as the git commit date), or when force overrides a value that
 // is already present.
 func shouldSet(d model.Doc, key string, force, alwaysRefresh bool) bool {
@@ -28,12 +28,12 @@ func shouldSet(d model.Doc, key string, force, alwaysRefresh bool) bool {
 	return force
 }
 
-// FileTier derives id, title, and type from the path and headings. It fills
+// FileSource derives id, title, and type from the path and headings. It fills
 // absent keys and leaves existing values alone unless force is set. Values come
-// from the raw sources (path slug, H1 heading, parent dir), not from
+// from the raw inputs (path slug, H1 heading, parent dir), not from
 // d.Title/d.Type, which already prefer the frontmatter value and so could never
 // be overwritten under force.
-func FileTier(d model.Doc, force bool) map[string]model.Value {
+func FileSource(d model.Doc, force bool) map[string]model.Value {
 	up := map[string]model.Value{}
 	if shouldSet(d, "id", force, false) {
 		up["id"] = model.Value{Kind: model.KindString, Str: slug(d.Path)}
@@ -67,11 +67,11 @@ func parentDirType(p string) string {
 	return path.Base(dir)
 }
 
-// GitTier derives lastUpdated and owner from git history. lastUpdated always
+// GitSource derives lastUpdated and owner from git history. lastUpdated always
 // refreshes: it is git's to own and moves on every commit, so a stale value is
 // never what you want. owner is filled only when absent, since a project may set
 // it by hand. force overwrites either.
-func GitTier(d model.Doc, root string, force bool) map[string]model.Value {
+func GitSource(d model.Doc, root string, force bool) map[string]model.Value {
 	up := map[string]model.Value{}
 	if !gitmeta.Available(root) {
 		return up
