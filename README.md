@@ -277,13 +277,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: aireilly/nasc-cli@v0.2.0
+      - uses: aireilly/nasc-cli@v0.2.1
         with:
-          version: v0.2.0
+          version: v0.2.1
           args: validate --format github --changed origin/${{ github.base_ref }}
-      - uses: aireilly/nasc-cli@v0.2.0
+      - uses: aireilly/nasc-cli@v0.2.1
         with:
-          version: v0.2.0
+          version: v0.2.1
           args: index --check --output AGENTS.md
 ```
 
@@ -305,7 +305,7 @@ nasc ships hooks for [pre-commit](https://pre-commit.com). Add them to `.pre-com
 ```yaml
 repos:
   - repo: https://github.com/aireilly/nasc-cli
-    rev: v0.2.0
+    rev: v0.2.1
     hooks:
       - id: nasc-validate
       - id: nasc-index-check
@@ -318,7 +318,7 @@ repos:
 Install a release binary from the [releases page](https://github.com/aireilly/nasc-cli/releases), or build with Go:
 
 ```bash
-go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.0
+go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.1
 nasc validate --changed origin/main
 nasc index --check --output AGENTS.md
 ```
