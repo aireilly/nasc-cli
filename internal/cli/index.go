@@ -6,6 +6,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 
 func newIndexCmd() *cobra.Command {
 	var output, tmplPath string
-	var strict bool
+	var strict, check bool
 	c := &cobra.Command{
 		Use:   "index",
 		Short: "Generate an AGENTS.md-style navigation index.",
@@ -25,7 +26,10 @@ func newIndexCmd() *cobra.Command {
 
 The index goes to --output, or to index.output in .nasc/config.yaml, or to
 stdout when neither is set. Pass --output - to force stdout. Writing to a file
-replaces only the region between nasc's markers and keeps the rest.`,
+replaces only the region between nasc's markers and keeps the rest.
+
+--check writes nothing. It exits 3 when the output file is missing or would
+change, so CI can catch an index that has drifted from the docs.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			docs, cfg, s, isDefault, err := loadAll(cmd)
 			if err != nil {
@@ -63,6 +67,9 @@ replaces only the region between nasc's markers and keeps the rest.`,
 			}
 			data := render.BuildIndex(docs, s)
 
+			if check && dest == "" {
+				return ExitError{Code: 2, Msg: "--check needs an output file: pass --output or set index.output in .nasc/config.yaml"}
+			}
 			if dest != "" {
 				var buf bytes.Buffer
 				if err := render.Index(&buf, data, tmpl); err != nil {
@@ -73,7 +80,12 @@ replaces only the region between nasc's markers and keeps the rest.`,
 					return rerr
 				}
 				merged := render.Merge(existing, buf.Bytes())
-				if !bytes.Equal(existing, merged) {
+				if check {
+					if !bytes.Equal(existing, merged) {
+						return ExitError{Code: 3, Msg: dest + " is out of date; run `nasc index` and commit the result"}
+					}
+					fmt.Fprintf(cmd.ErrOrStderr(), "nasc: %s is up to date\n", dest)
+				} else if !bytes.Equal(existing, merged) {
 					mode := os.FileMode(0o644)
 					if info, serr := os.Stat(dest); serr == nil {
 						mode = info.Mode()
@@ -93,6 +105,7 @@ replaces only the region between nasc's markers and keeps the rest.`,
 	}
 	c.Flags().StringVarP(&output, "output", "o", "", "write to a file (- for stdout)")
 	c.Flags().StringVar(&tmplPath, "template", "", "custom Go text/template")
+	c.Flags().BoolVar(&check, "check", false, "write nothing; exit 3 if the output file is out of date")
 	c.Flags().BoolVar(&strict, "strict", false, "exit 3 if any doc is missing schema-required fields (needs a schema)")
 	return c
 }

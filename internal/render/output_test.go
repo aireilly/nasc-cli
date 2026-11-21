@@ -100,3 +100,19 @@ func TestFindingsJSONContainsKnownField(t *testing.T) {
 		t.Fatalf("expected 3 findings decoded, got %d", len(got))
 	}
 }
+
+func TestFindingsGitHubAnnotations(t *testing.T) {
+	var b bytes.Buffer
+	fs := []validate.Finding{
+		{Path: "docs/a,b.md", Field: "description", Rule: "required", Severity: "error", Message: "missing: 100%\nreally"},
+		{Path: "docs/c.md", Rule: "stale", Severity: "warn", Message: "old"},
+	}
+	if err := Findings(&b, fs, FormatGitHub); err != nil {
+		t.Fatal(err)
+	}
+	want := "::error file=docs/a%2Cb.md,line=1,title=nasc required (description)::missing: 100%25%0Areally\n" +
+		"::warning file=docs/c.md,line=1,title=nasc stale::old\n"
+	if b.String() != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", b.String(), want)
+	}
+}

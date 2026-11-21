@@ -1,0 +1,16 @@
+# Hooks for https://pre-commit.com. pre-commit builds nasc with Go from this
+# repository, so the first run takes a little longer.
+- id: nasc-validate
+  name: nasc validate
+  description: Check the markdown docs in this commit against the nasc schema.
+  entry: nasc validate --format table
+  language: golang
+  files: \.(md|mdx|markdown)$
+  pass_filenames: true
+- id: nasc-index-check
+  name: nasc index --check
+  description: Fail when the generated index is out of date. Needs index.output in .nasc/config.yaml.
+  entry: nasc index --check
+  language: golang
+  files: \.(md|mdx|markdown)$
+  pass_filenames: false

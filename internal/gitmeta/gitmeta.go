@@ -137,6 +137,42 @@ var codeownersLocations = []string{
 	"docs/CODEOWNERS",
 }
 
+// Prefix returns root's path relative to the git top level, with a trailing
+// slash, or "" at the top or outside git. Joining it to a path relative to
+// root gives the path GitHub and other tools expect.
+func Prefix(root string) string {
+	_, p := topLevel(root)
+	return p
+}
+
+// ChangedFiles lists files under root that differ from the merge base of ref
+// and HEAD: commits on this branch, uncommitted edits, and untracked files.
+// Paths are relative to root. Deleted files are left out.
+func ChangedFiles(root, ref string) ([]string, error) {
+	base, err := git(root, "merge-base", ref, "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("cannot find a merge base with %q (in CI, fetch it first, for example with fetch-depth: 0): %w", ref, err)
+	}
+	diff, err := git(root, "diff", "--name-only", "--relative", "--diff-filter=ACMR", strings.TrimSpace(base), "--", ".")
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := git(root, "ls-files", "--others", "--exclude-standard", "--", ".")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range strings.Split(diff+"\n"+untracked, "\n") {
+		l = strings.TrimSpace(l)
+		if l != "" && !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
 // topLevel returns the git work tree's top directory for root, and root's
 // path relative to it ("" at the top). Outside git it returns root itself.
 func topLevel(root string) (top, prefix string) {

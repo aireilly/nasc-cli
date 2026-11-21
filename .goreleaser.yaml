@@ -9,5 +9,7 @@ builds:
       - -s -w -X github.com/aireilly/nasc-cli/internal/cli.Version={{.Version}}
 archives:
   - formats: [tar.gz]
+    # The GitHub Action and install docs depend on this name. Keep it stable.
+    name_template: "nasc_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
   name_template: "checksums.txt"

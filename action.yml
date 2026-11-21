@@ -1,0 +1,40 @@
+name: nasc
+description: Check a repository's markdown docs for AI agents with nasc, and annotate pull requests with the findings.
+author: Aidan Reilly
+branding:
+  icon: link
+  color: green
+
+inputs:
+  version:
+    description: >
+      nasc release to install, for example v0.2.0. Pin a version so that a new
+      release cannot change your build. "latest" works but prints a warning.
+    default: latest
+  args:
+    description: >
+      Arguments passed to nasc, split on spaces. The default checks every doc
+      and annotates the pull request.
+    default: validate --format github
+  working-directory:
+    description: Directory to run nasc in.
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Install nasc
+      shell: bash
+      env:
+        NASC_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: '"$GITHUB_ACTION_PATH/scripts/install-action.sh"'
+    - name: Run nasc
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        NASC_ARGS: ${{ inputs.args }}
+      run: |
+        set -f
+        # shellcheck disable=SC2086
+        nasc $NASC_ARGS

@@ -124,6 +124,14 @@ nasc mark --source file,git,llm --llm-cmd "claude -p"
 
 `--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because nasc builds the whole prompt itself. nasc splits the command with shell quoting rules and runs it directly, without a shell. For each doc that needs a derived field, nasc sends the file path, title, type, and the first 2000 bytes of the body.
 
+Before a long run, check that the command works by running the following command:
+
+```bash
+nasc doctor --llm
+```
+
+This sends one short test prompt and reports the reply or the error.
+
 nasc processes 4 docs at a time by default. Change this with `--jobs` or `mark.jobs`. Each call has a 2 minute limit, which you can change with `--llm-timeout` or `mark.llm_timeout`. When a reply is not valid JSON or a value breaks the schema length bounds, nasc asks again once and tells the model what was wrong. Any doc that still fails is listed on stderr, its other fields are still marked, and `mark` exits 4.
 
 The LLM source is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present.
@@ -140,10 +148,10 @@ The LLM source is nondeterministic, so `mark` fills a field only when it is abse
 nasc schema init [--preset agent-context|minimal]
 nasc schema infer [--write]
 nasc mark [--source file,git,llm] [--write] [--llm-cmd <cmd>] [--llm-timeout <dur>] [--jobs <n>] [--force]
-nasc index [--output <file>|-] [--template <file>] [--strict]
-nasc validate [--severity error|warn] [--format table|json|jsonl|paths]
+nasc index [--output <file>|-] [--template <file>] [--strict] [--check]
+nasc validate [path...] [--changed <ref>] [--baseline write|ignore] [--severity error|warn] [--format table|json|jsonl|paths|github]
 nasc get <path> [key]
-nasc doctor
+nasc doctor [--llm]
 ```
 
 Every command accepts `-C <dir>` to set the project root.
@@ -186,6 +194,10 @@ By default nasc also excludes `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `LICEN
 
 `nasc validate` reads every doc, checks it against the schema, and exits 3 when a doc breaks a rule. A non-zero exit fails the job, so a pull request that adds an unmarked or malformed doc is caught before it merges. Until you commit `.nasc/schema.yaml`, `validate` reports findings as warnings and always exits 0.
 
+### GitHub Actions
+
+Use the nasc action. It downloads a release binary, checks it against the release checksums, and runs nasc. With the default arguments, findings appear as annotations on the pull request diff.
+
 ```yaml
 # .github/workflows/docs.yml
 name: docs
@@ -196,14 +208,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
         with:
-          go-version: "1.27"
-      - run: go install github.com/aireilly/nasc-cli/cmd/nasc@latest
-      - run: nasc validate
+          fetch-depth: 0
+      - uses: aireilly/nasc-cli@v0
+        with:
+          version: v0.2.0
+          args: validate --format github --changed origin/${{ github.base_ref }}
+      - uses: aireilly/nasc-cli@v0
+        with:
+          version: v0.2.0
+          args: index --check --output AGENTS.md
 ```
 
-Add `nasc index --output AGENTS.md --strict` as a second step once a schema is checked in, and the job also fails when a doc is missing schema-required fields. Generate descriptions with the `llm` source in a local `nasc mark` run and commit the result; CI stays deterministic and needs no API key.
+The first step checks only the docs the pull request touches. The second step fails when `AGENTS.md` no longer matches the docs, so the index that agents read first cannot drift. Pin `version` so that a new nasc release cannot change your build. `--changed` needs the base branch history, which is why the checkout sets `fetch-depth: 0`.
+
+Generate descriptions with the `llm` source in a local `nasc mark` run and commit the result. CI stays deterministic and needs no API key.
+
+### Adopting nasc in a repository with existing docs
+
+You do not have to fix every existing doc before you turn on CI. Use one of these approaches:
+
+* Check only what changes. `nasc validate --changed origin/main` checks the docs that differ from the merge base with `origin/main`, including uncommitted and untracked files. You can also pass files or directories, for example `nasc validate docs/guides`.
+* Record a baseline. `nasc validate --baseline write` saves the current findings to `.nasc/baseline.json`. Commit that file. After that, `nasc validate` reports the recorded findings as suppressed and fails only on new ones. When docs get fixed, nasc tells you, and running `--baseline write` again shrinks the file. Pass `--baseline ignore` to see everything.
+
+### pre-commit
+
+nasc ships hooks for [pre-commit](https://pre-commit.com). Add them to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/aireilly/nasc-cli
+    rev: v0.2.0
+    hooks:
+      - id: nasc-validate
+      - id: nasc-index-check
+```
+
+`nasc-validate` checks the markdown files in the commit. `nasc-index-check` fails when the index is out of date, and needs `index.output` set in `.nasc/config.yaml`. pre-commit builds nasc with Go, so the first run takes longer.
+
+### Other CI systems
+
+Install a release binary from the [releases page](https://github.com/aireilly/nasc-cli/releases), or build with Go:
+
+```bash
+go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.0
+nasc validate --changed origin/main
+nasc index --check --output AGENTS.md
+```
 
 ## Exit codes
 
@@ -212,7 +263,7 @@ Add `nasc index --output AGENTS.md --strict` as a second step once a schema is c
 | 0    | success, corpus is agent-ready                                |
 | 1    | success, nothing to do (empty result, empty diff)             |
 | 2    | usage error                                                   |
-| 3    | validation failure (`validate`, `index --strict`)             |
+| 3    | validation failure (`validate`, `index --strict`), or a stale index (`index --check`) |
 | 4    | the `llm` source failed for at least one doc (`mark`)         |
 | 5    | write conflict, a file changed under us during `mark --write` |
 

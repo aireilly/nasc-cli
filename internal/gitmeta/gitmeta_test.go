@@ -338,3 +338,48 @@ func TestStripFrontmatter(t *testing.T) {
 		}
 	}
 }
+
+func TestChangedFiles(t *testing.T) {
+	dir := initRepo(t)
+	writeAndCommit(t, dir, "docs/old.md", "old")
+	cmd := exec.Command("git", "branch", "-M", "main")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "checkout", "-q", "-b", "feature")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	writeAndCommit(t, dir, "docs/committed.md", "new")
+	if err := writeFile(dir, "docs/old.md", "edited"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(dir, "docs/untracked.md", "u"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ChangedFiles(dir, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"docs/committed.md": true, "docs/old.md": true, "docs/untracked.md": true}
+	if len(got) != len(want) {
+		t.Fatalf("ChangedFiles = %v", got)
+	}
+	for _, g := range got {
+		if !want[g] {
+			t.Fatalf("unexpected %q in %v", g, got)
+		}
+	}
+
+	// From a subdirectory root, paths are relative to it.
+	got, err = ChangedFiles(filepath.Join(dir, "docs"), "main")
+	if err != nil || len(got) != 3 || got[0][:5] == "docs/" {
+		t.Fatalf("ChangedFiles(sub) = %v, %v", got, err)
+	}
+	if Prefix(filepath.Join(dir, "docs")) != "docs/" {
+		t.Fatalf("Prefix = %q", Prefix(filepath.Join(dir, "docs")))
+	}
+}
