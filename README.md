@@ -16,7 +16,7 @@ It marks docs with agent-friendly YAML metadata, generates a docs index for agen
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
 With `nasc`, agents can pick which docs to open from the frontmatter alone, instead of reading every file.
 
-Example nasc output [deploy/environments/dev/README.md](https://github.com/aireilly/llm-d-router/pull/1/changes#diff-b9160b43898398c21be85b07a1659f6b5fd93b18df7b8a814e6f48c2aefe2621R1-R19):
+Example `nasc` output [deploy/environments/dev/README.md](https://github.com/aireilly/llm-d-router/pull/1/changes#diff-b9160b43898398c21be85b07a1659f6b5fd93b18df7b8a814e6f48c2aefe2621R1-R19):
 
 ```yaml
 ---
@@ -57,9 +57,9 @@ go build -o nasc ./cmd/nasc
 
 ## Quick start
 
-`mark`, `index`, and `validate` work with no configuration. When there is no `.nasc/schema.yaml`, nasc uses a built-in `agent-context` default and `validate` reports every finding as a warning. This means you can add nasc to CI before you mark a single doc. Run `nasc schema init` when you want the rules enforced.
+`mark`, `index`, and `validate` work with no configuration. When there is no `.nasc/schema.yaml`, `nasc` uses a built-in `agent-context` default and `validate` reports every finding as a warning. This means you can add `nasc` to CI before you mark a single doc. Run `nasc schema init` when you want the rules enforced.
 
-You can run nasc from any directory in the repository. nasc walks up to the nearest directory that holds `.nasc/`, or to the git top level, and treats that as the project root. Pass `-C <dir>` to choose the root yourself.
+You can run nasc from any directory in the repository. `nasc` walks up to the nearest directory that holds `.nasc/`, or to the git top level, and treats that as the project root. Pass `-C <dir>` to choose the root yourself.
 
 ```bash
 # Look at what you already have, and let nasc propose a schema.
@@ -100,7 +100,7 @@ A key is a directory name or a repo-relative directory path. The deepest matchin
 
 ### Working alongside a site generator
 
-Docusaurus uses `id` to build page URLs, and Hugo uses `type` to choose a page layout. When `mark` finds a `docusaurus.config.*` or Hugo config at the root or one directory below it, it leaves those keys alone for docs in that site and tells you. To store a nasc field under another key, set `key` on the field:
+Docusaurus uses `id` to build page URLs, and Hugo uses `type` to choose a page layout. When `mark` finds a `docusaurus.config.*` or Hugo config at the root or one directory below it, it leaves those keys alone for docs in that site and tells you. To store a `nasc` field under another key, set `key` on the field:
 
 ```yaml
 fields:
@@ -122,7 +122,7 @@ Run it by adding `llm` to `--source` and passing the command to run:
 nasc mark --source file,git,llm --llm-cmd "claude -p"
 ```
 
-`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because nasc builds the whole prompt itself. nasc splits the command with shell quoting rules and runs it directly, without a shell. For each doc that needs a derived field, nasc sends the file path, title, type, and the first 2000 bytes of the body.
+`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. `nasc` splits the command with shell quoting rules and runs it directly, without a shell. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body.
 
 Before a long run, check that the command works by running the following command:
 
@@ -132,11 +132,11 @@ nasc doctor --llm
 
 This sends one short test prompt and reports the reply or the error.
 
-nasc processes 4 docs at a time by default. Change this with `--jobs` or `mark.jobs`. Each call has a 2 minute limit, which you can change with `--llm-timeout` or `mark.llm_timeout`. When a reply is not valid JSON or a value breaks the schema length bounds, nasc asks again once and tells the model what was wrong. Any doc that still fails is listed on stderr, its other fields are still marked, and `mark` exits 4.
+`nasc` processes 4 docs at a time by default. Change this with `--jobs` or `mark.jobs`. Each call has a 2 minute limit, which you can change with `--llm-timeout` or `mark.llm_timeout`. When a reply is not valid JSON or a value breaks the schema length bounds, nasc asks again once and tells the model what was wrong. Any doc that still fails is listed on stderr, its other fields are still marked, and `mark` exits 4.
 
-nasc stores each accepted reply in `.nasc/cache/llm.json`, keyed by the command and the exact question. An unchanged doc that is asked the same question again gets the stored reply, so a second run, even with `--force`, does not spend calls on docs whose body has not changed. Pass `--no-cache` to ask again. nasc writes a `.gitignore` into `.nasc/cache/` so the cache stays out of commits.
+`nasc` stores each accepted reply in `.nasc/cache/llm.json`, keyed by the command and the exact question. An unchanged doc that is asked the same question again gets the stored reply, so a second run, even with `--force`, does not spend calls on docs whose body has not changed. Pass `--no-cache` to ask again. `nasc` writes a `.gitignore` into `.nasc/cache/` so the cache stays out of commits.
 
-For list fields such as `tags`, nasc tells the model which values the project already uses, so the same topic gets the same tag across docs. nasc also lowercases the reply, removes duplicates, and cuts the list to the field's `max_length`. To fix the set of allowed tags, list them in `vocabulary`, for example:
+For list fields such as `tags`, `nasc` tells the model which values the project already uses, so the same topic gets the same tag across docs. `nasc` also lowercases the reply, removes duplicates, and cuts the list to the field's `max_length`. To fix the set of allowed tags, list them in `vocabulary`, for example:
 
 ```yaml
 fields:
@@ -153,13 +153,13 @@ The LLM source is nondeterministic, so `mark` fills a field only when it is abse
 
 ### How `lastUpdated` and `owner` are derived
 
-`lastUpdated` is the author date of the most recent commit that changed the doc body. Commits that change only the frontmatter are skipped. This means committing the output of `mark` does not move the date, and running `mark` again after that commit changes nothing. In a shallow clone, nasc uses the oldest commit available.
+`lastUpdated` is the author date of the most recent commit that changed the doc body. Commits that change only the frontmatter are skipped. This means committing the output of `mark` does not move the date, and running `mark` again after that commit changes nothing. In a shallow clone, `nasc` uses the oldest commit available.
 
-`owner` is the first owner on the matching `CODEOWNERS` rule. nasc reads `.github/CODEOWNERS`, then `CODEOWNERS`, then `docs/CODEOWNERS`, in the same order as GitHub. When no rule matches, `owner` stays unset. Set `mark.owner_fallback: blame` to use the email address of the author with the most lines in the file instead. That puts a personal email address in the doc, so check it's OK first.
+`owner` is the first owner on the matching `CODEOWNERS` rule. `nasc` reads `.github/CODEOWNERS`, then `CODEOWNERS`, then `docs/CODEOWNERS`, in the same order as GitHub. When no rule matches, `owner` stays unset. Set `mark.owner_fallback: blame` to use the email address of the author with the most lines in the file instead. That puts a personal email address in the doc, so check it's OK first.
 
 ### Keeping AGENTS.md small
 
-Agents load `AGENTS.md` at the start of every task, so each line in it costs tokens each time. A full index of a large repository can run to hundreds of lines. nasc warns when the index it writes into `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` is longer than 150 lines. Use one of these options to keep it short:
+Agents load `AGENTS.md` at the start of every task, so each line in it costs tokens each time. A full index of a large repository can run to hundreds of lines. `nasc` warns when the index it writes into `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` is longer than 150 lines. Use one of these options to keep it short:
 
 * Write the full index to its own file and put a short pointer in `AGENTS.md`:
 
@@ -177,7 +177,7 @@ Agents load `AGENTS.md` at the start of every task, so each line in it costs tok
 
   This writes the docs at the top level into `AGENTS.md` with a link to `<dir>/AGENTS.md` for each top-level directory. Agents that read the nearest `AGENTS.md` load only the index for the part of the repository they work in.
 
-Set `index.pointer`, `index.nested`, and `index.max_lines` in `.nasc/config.yaml` to make these the defaults. Links in every index are relative to the file they are written in. A file that nasc generated in full is never indexed itself.
+Set `index.pointer`, `index.nested`, and `index.max_lines` in `.nasc/config.yaml` to make these the defaults. Links in every index are relative to the file they are written in. A file that `nasc` generated in full is never indexed itself.
 
 ### Flagging docs that a code change affects
 
@@ -251,9 +251,9 @@ Available Commands:
 walk repo → parse each doc (frontmatter + body) → one of { mark | index | validate }
 ```
 
-The walker streams markdown paths, honouring `.gitignore`, `.nascignore`, and the `include` and `exclude` globs in `.nasc/config.yaml`. It always skips dot directories (such as `.git/`, `.github/`, and `.claude/`), `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so nasc never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and any `SKILL.md`.
+The walker streams markdown paths, honouring `.gitignore`, `.nascignore`, and the `include` and `exclude` globs in `.nasc/config.yaml`. It always skips dot directories (such as `.git/`, `.github/`, and `.claude/`), `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so `nasc` never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and any `SKILL.md`.
 
-By default nasc also excludes `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `LICENSE.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, and everything under a `testdata/` or `third_party/` directory. Set `no_default_excludes: true` to scan them.
+By default `nasc` also excludes `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `LICENSE.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, and everything under a `testdata/` or `third_party/` directory. Set `no_default_excludes: true` to scan them.
 
 `nasc index --output AGENTS.md` merges rather than overwrites.
 
@@ -263,7 +263,7 @@ By default nasc also excludes `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `LICEN
 
 ### GitHub Actions
 
-Use the nasc action. It downloads a release binary, checks it against the release checksums, and runs nasc. With the default arguments, findings appear as annotations on the pull request diff.
+Use the `nasc` action. It downloads a release binary, checks it against the release checksums, and runs `nasc`. With the default arguments, findings appear as annotations on the pull request diff.
 
 ```yaml
 # .github/workflows/docs.yml
@@ -296,11 +296,11 @@ Generate descriptions with the `llm` source in a local `nasc mark` run and commi
 You do not have to fix every existing doc before you turn on CI. Use one of these approaches:
 
 * Check only what changes. `nasc validate --changed origin/main` checks the docs that differ from the merge base with `origin/main`, including uncommitted and untracked files. You can also pass files or directories, for example `nasc validate docs/guides`.
-* Record a baseline. `nasc validate --baseline write` saves the current findings to `.nasc/baseline.json`. Commit that file. After that, `nasc validate` reports the recorded findings as suppressed and fails only on new ones. When docs get fixed, nasc tells you, and running `--baseline write` again shrinks the file. Pass `--baseline ignore` to see everything.
+* Record a baseline. `nasc validate --baseline write` saves the current findings to `.nasc/baseline.json`. Commit that file. After that, `nasc validate` reports the recorded findings as suppressed and fails only on new ones. When docs get fixed, `nasc` tells you, and running `--baseline write` again shrinks the file. Pass `--baseline ignore` to see everything.
 
 ### pre-commit
 
-nasc ships hooks for [pre-commit](https://pre-commit.com). Add them to `.pre-commit-config.yaml`:
+`nasc` ships hooks for [pre-commit](https://pre-commit.com). Add them to `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
@@ -311,7 +311,7 @@ repos:
       - id: nasc-index-check
 ```
 
-`nasc-validate` checks the markdown files in the commit. `nasc-index-check` fails when the index is out of date, and needs `index.output` set in `.nasc/config.yaml`. pre-commit builds nasc with Go, so the first run takes longer.
+`nasc-validate` checks the markdown files in the commit. `nasc-index-check` fails when the index is out of date, and needs `index.output` set in `.nasc/config.yaml`. pre-commit builds `nasc` with Go, so the first run takes longer.
 
 ### Other CI systems
 
@@ -325,14 +325,14 @@ nasc index --check --output AGENTS.md
 
 ## Exit codes
 
-| Code | Meaning                                                       |
-| ---- | ------------------------------------------------------------- |
-| 0    | success, corpus is agent-ready                                |
-| 1    | success, nothing to do (empty result, empty diff)             |
-| 2    | usage error                                                   |
-| 3    | validation failure (`validate`, `index --strict`), or a stale index (`index --check`) |
-| 4    | the `llm` source failed for at least one doc (`mark`)         |
-| 5    | write conflict, a file changed under us during `mark --write` |
+| Code | Meaning |
+| --- | --- |
+| 0 | success, corpus is agent-ready |
+| 1 | success, nothing to do (empty result, empty diff) |
+| 2 | usage error |
+| 3 | validation failure (`validate`, `index --strict`), or a stale index (`index --check`) |
+| 4 | the `llm` source failed for at least one doc (`mark`) |
+| 5 | write conflict, a file changed under us during `mark --write` |
 
 ## Configuration
 
