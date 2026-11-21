@@ -14,7 +14,7 @@
 It marks docs with agent-friendly YAML metadata, generates a docs index for agents, and validates the whole docs corpus against a declared schema.
 
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
-With `nasc`, agents can decide what to open in repository, without reading everything first.
+With `nasc`, agents can pick which docs to open from the frontmatter alone, instead of reading every file.
 
 Example nasc output [deploy/environments/dev/README.md](https://github.com/aireilly/llm-d-router/pull/1/changes#diff-b9160b43898398c21be85b07a1659f6b5fd93b18df7b8a814e6f48c2aefe2621R1-R19):
 
@@ -41,7 +41,7 @@ type: runbook
 
 ## Install
 
-Requires Go 1.27 or newer.
+Download a binary for Linux, macOS, or Windows from the [releases page](https://github.com/aireilly/nasc-cli/releases), or install with Go 1.27 or newer:
 
 ```bash
 go install github.com/aireilly/nasc-cli/cmd/nasc@latest
@@ -155,11 +155,11 @@ The LLM source is nondeterministic, so `mark` fills a field only when it is abse
 
 `lastUpdated` is the author date of the most recent commit that changed the doc body. Commits that change only the frontmatter are skipped. This means committing the output of `mark` does not move the date, and running `mark` again after that commit changes nothing. In a shallow clone, nasc uses the oldest commit available.
 
-`owner` is the first owner on the matching `CODEOWNERS` rule. nasc reads `.github/CODEOWNERS`, then `CODEOWNERS`, then `docs/CODEOWNERS`, in the same order as GitHub. When no rule matches, `owner` stays unset. Set `mark.owner_fallback: blame` to use the email address of the author with the most lines in the file instead. Be aware that this writes a personal email address into the doc.
+`owner` is the first owner on the matching `CODEOWNERS` rule. nasc reads `.github/CODEOWNERS`, then `CODEOWNERS`, then `docs/CODEOWNERS`, in the same order as GitHub. When no rule matches, `owner` stays unset. Set `mark.owner_fallback: blame` to use the email address of the author with the most lines in the file instead. That puts a personal email address in the doc, so check it's OK first.
 
 ### Keeping AGENTS.md small
 
-Agents load `AGENTS.md` at the start of every task, so every line in it costs tokens every time. A full index of a large repository can run to hundreds of lines. nasc warns when the index it writes into `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` is longer than 150 lines. Use one of these options to keep it short:
+Agents load `AGENTS.md` at the start of every task, so each line in it costs tokens each time. A full index of a large repository can run to hundreds of lines. nasc warns when the index it writes into `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` is longer than 150 lines. Use one of these options to keep it short:
 
 * Write the full index to its own file and put a short pointer in `AGENTS.md`:
 
@@ -277,17 +277,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: aireilly/nasc-cli@v0
+      - uses: aireilly/nasc-cli@v0.2.0
         with:
           version: v0.2.0
           args: validate --format github --changed origin/${{ github.base_ref }}
-      - uses: aireilly/nasc-cli@v0
+      - uses: aireilly/nasc-cli@v0.2.0
         with:
           version: v0.2.0
           args: index --check --output AGENTS.md
 ```
 
-The first step checks only the docs the pull request touches. The second step fails when `AGENTS.md` no longer matches the docs, so the index that agents read first cannot drift. Pin `version` so that a new nasc release cannot change your build. `--changed` needs the base branch history, which is why the checkout sets `fetch-depth: 0`.
+The first step checks only the docs the pull request touches. The second step fails when `AGENTS.md` no longer matches the docs, so nobody can merge doc changes without regenerating it. Set `version` to the same tag as the `uses` line. Without it, the action installs the latest release, and a new nasc release can change your build. `--changed` needs the base branch history, which is why the checkout sets `fetch-depth: 0`.
 
 Generate descriptions with the `llm` source in a local `nasc mark` run and commit the result. CI stays deterministic and needs no API key.
 

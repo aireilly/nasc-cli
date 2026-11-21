@@ -152,7 +152,7 @@ during --write.`,
 	}
 	c.Flags().StringVar(&sourceCSV, "source", "file,git", "comma-separated sources: file,git,llm")
 	c.Flags().BoolVar(&write, "write", false, "apply changes in place")
-	c.Flags().BoolVar(&dryRun, "dry-run", true, "print the diff without writing (default)")
+	c.Flags().BoolVar(&dryRun, "dry-run", true, "print the diff without writing")
 	c.Flags().StringVar(&llmCmd, "llm-cmd", "", "agent command for the llm source, e.g. 'claude -p'")
 	c.Flags().StringVar(&llmTimeout, "llm-timeout", "", "limit for one llm call, e.g. 90s (default 2m)")
 	c.Flags().IntVar(&jobs, "jobs", 0, "documents to process at once (default 4)")
