@@ -7,9 +7,11 @@
 // The rules follow what people expect from .gitignore-style config:
 //
 //   - `*` matches within one path segment, `**` matches across segments.
-//   - A leading `**/` also matches at the root, so `**/*.md` matches README.md.
+//   - `**/` also matches zero directories, so `**/*.md` matches README.md and
+//     `docs/**/*.md` matches docs/a.md.
 //   - A pattern with no slash matches the file's base name at any depth, so
-//     `CHANGELOG.md` excludes every CHANGELOG.md in the tree.
+//     `CHANGELOG.md` excludes every CHANGELOG.md in the tree. A leading `/`
+//     anchors it to the root instead.
 //   - A trailing `/**` matches everything under that directory.
 package globs
 
@@ -41,30 +43,46 @@ func compile(p string) (*glob.Pattern, error) {
 
 // Match reports whether rel matches pattern. An invalid pattern never matches.
 func Match(pattern, rel string) bool {
-	pattern = strings.TrimPrefix(strings.TrimSpace(pattern), "./")
-	pattern = strings.TrimPrefix(pattern, "/")
+	pattern = strings.TrimSpace(pattern)
+	// A leading `/` (or `./`) anchors the pattern to the root, as in
+	// .gitignore, so `/CHANGELOG.md` matches only the top-level file.
+	anchored := strings.HasPrefix(pattern, "/") || strings.HasPrefix(pattern, "./")
+	pattern = strings.TrimPrefix(strings.TrimPrefix(pattern, "./"), "/")
 	if pattern == "" {
 		return false
 	}
 	rel = strings.TrimPrefix(rel, "./")
-	if !strings.Contains(pattern, "/") {
+	if !anchored && !strings.Contains(pattern, "/") {
 		base := rel
 		if i := strings.LastIndexByte(rel, '/'); i >= 0 {
 			base = rel[i+1:]
 		}
 		return matchOne(pattern, base)
 	}
+	return matchDeep(pattern, rel)
+}
+
+// matchDeep matches pattern against rel and lets every `**/` also match zero
+// directories, so `**/x` matches `x` at the root and `docs/**/*.md` matches
+// `docs/a.md`.
+func matchDeep(pattern, rel string) bool {
 	if matchOne(pattern, rel) {
 		return true
 	}
-	// `**/x` should also match `x` at the root.
-	for p := pattern; strings.HasPrefix(p, "**/"); {
-		p = strings.TrimPrefix(p, "**/")
-		if matchOne(p, rel) {
+	if strings.HasPrefix(pattern, "**/") && matchDeep(pattern[len("**/"):], rel) {
+		return true
+	}
+	for i := 0; ; {
+		j := strings.Index(pattern[i:], "/**/")
+		if j < 0 {
+			return false
+		}
+		i += j
+		if matchDeep(pattern[:i]+"/"+pattern[i+len("/**/"):], rel) {
 			return true
 		}
+		i++
 	}
-	return false
 }
 
 func matchOne(pattern, s string) bool {

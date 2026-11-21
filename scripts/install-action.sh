@@ -7,7 +7,16 @@
 set -euo pipefail
 
 repo="aireilly/nasc-cli"
-version="${NASC_VERSION:-latest}"
+version="${NASC_VERSION:-}"
+if [ -z "$version" ]; then
+  # Default to the release that matches the action's tag, so a Dependabot or
+  # Renovate bump of `uses:` also bumps the binary. A branch or SHA ref falls
+  # back to the latest release.
+  case "${NASC_ACTION_REF:-}" in
+    v[0-9]*.*.*) version="$NASC_ACTION_REF" ;;
+    *) version=latest ;;
+  esac
+fi
 auth=()
 if [ -n "${GH_TOKEN:-}" ]; then
   auth=(-H "Authorization: Bearer ${GH_TOKEN}")

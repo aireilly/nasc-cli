@@ -81,11 +81,16 @@ change, so CI can catch an index that has drifted from the docs.`,
 				return filepath.Join(projectRoot(), cfgVal)
 			}
 			dest := fromConfig(output, cfg.Index.Output)
+			ptr := pointer
 			if dest == "-" {
+				// Forcing stdout also drops the config's pointer and nested
+				// settings, which only make sense for a file. Flags still
+				// count, so asking for both is reported below.
 				dest = ""
+			} else {
+				ptr = fromConfig(pointer, cfg.Index.Pointer)
+				nested = nested || cfg.Index.Nested
 			}
-			ptr := fromConfig(pointer, cfg.Index.Pointer)
-			nested = nested || cfg.Index.Nested
 			if !cmd.Flags().Changed("max-lines") && cfg.Index.MaxLines != nil {
 				maxLines = *cfg.Index.MaxLines
 			}
@@ -106,6 +111,8 @@ change, so CI can catch an index that has drifted from the docs.`,
 				return ExitError{Code: 2, Msg: "--pointer and --nested need an output file: pass --output or set index.output"}
 			case ptr != "" && nested:
 				return ExitError{Code: 2, Msg: "use --pointer or --nested, not both"}
+			case ptr != "" && samePath(ptr, dest):
+				return ExitError{Code: 2, Msg: fmt.Sprintf("the pointer and the index are both %s: drop --output to use index.output, or set a different pointer", ptr)}
 			}
 
 			if dest == "" {
@@ -142,20 +149,26 @@ change, so CI can catch an index that has drifted from the docs.`,
 					stale = append(stale, f.path)
 					continue
 				}
-				mode := os.FileMode(0o644)
-				if info, serr := os.Stat(f.path); serr == nil {
-					mode = info.Mode()
+				// Write through a symlink (CLAUDE.md -> AGENTS.md is common)
+				// rather than replacing the link with a regular file.
+				target := f.path
+				if resolved, lerr := filepath.EvalSymlinks(f.path); lerr == nil {
+					target = resolved
 				}
-				if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
+				mode := os.FileMode(0o644)
+				if info, serr := os.Stat(target); serr == nil {
+					mode = info.Mode().Perm()
+				}
+				if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 					return err
 				}
-				if werr := edit.WriteAtomic(f.path, merged, mode); werr != nil {
+				if werr := edit.WriteAtomic(target, merged, mode); werr != nil {
 					return werr
 				}
 			}
 			if check {
 				if len(stale) > 0 {
-					return ExitError{Code: 3, Msg: "out of date: " + strings.Join(stale, ", ") + "; run `nasc index` and commit the result"}
+					return ExitError{Code: 3, Msg: "out of date: " + strings.Join(stale, ", ") + ". Run `nasc index` and commit the result"}
 				}
 				fmt.Fprintln(stderr, "nasc: index is up to date")
 			}
@@ -164,10 +177,10 @@ change, so CI can catch an index that has drifted from the docs.`,
 	}
 	c.Flags().StringVarP(&output, "output", "o", "", "write to a file (- for stdout)")
 	c.Flags().StringVar(&tmplPath, "template", "", "custom Go text/template")
-	c.Flags().StringVar(&pointer, "pointer", "", "write only a short pointer to the --output file into this file, e.g. AGENTS.md")
+	c.Flags().StringVar(&pointer, "pointer", "", "write only a short pointer to the --output file into this file, for example AGENTS.md")
 	c.Flags().BoolVar(&nested, "nested", false, "write one index per top-level directory, linked from --output")
 	c.Flags().IntVar(&maxLines, "max-lines", 150, "warn when an index in AGENTS.md, CLAUDE.md or GEMINI.md is longer (0 disables)")
-	c.Flags().BoolVar(&check, "check", false, "write nothing; exit 3 if any output file is out of date")
+	c.Flags().BoolVar(&check, "check", false, "write nothing, and exit 3 if any output file is out of date")
 	c.Flags().BoolVar(&strict, "strict", false, "exit 3 if any doc is missing schema-required fields (needs a schema)")
 	return c
 }
@@ -225,10 +238,35 @@ func planIndex(docs []model.Doc, s *schema.Schema, root, dest, ptr string, neste
 	var subs []render.Subindex
 	for _, dir := range dirs {
 		file := filepath.Join(root, dir, base)
+		if samePath(file, dest) {
+			// dest itself sits in this directory (--output docs/INDEX.md), so
+			// its docs go in dest rather than in a subindex that would
+			// overwrite it.
+			top = append(top, byDir[dir]...)
+			continue
+		}
 		if err := renderTo(file, byDir[dir], nil); err != nil {
 			return nil, all, err
 		}
 		subs = append(subs, render.Subindex{Dir: dir, Path: linkFrom(filepath.Dir(dest), file), Count: len(byDir[dir])})
+	}
+	// A directory that lost all its docs still has the subindex nasc wrote
+	// for it. Render it empty so the stale list goes and --check sees it.
+	if entries, err := os.ReadDir(root); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() || byDir[e.Name()] != nil {
+				continue
+			}
+			file := filepath.Join(root, e.Name(), base)
+			if samePath(file, dest) {
+				continue
+			}
+			if b, rerr := os.ReadFile(file); rerr == nil && bytes.Contains(b, []byte(render.BeginMarker)) {
+				if err := renderTo(file, nil, nil); err != nil {
+					return nil, all, err
+				}
+			}
+		}
 	}
 	if err := renderTo(dest, top, subs); err != nil {
 		return nil, all, err
@@ -247,11 +285,27 @@ func relinked(docs []model.Doc, root, dir string) []model.Doc {
 	return out
 }
 
-// linkFrom returns target as a slash-separated path relative to dir.
+// linkFrom returns target as a slash-separated path relative to dir. Either
+// may be absolute or relative to the current directory.
 func linkFrom(dir, target string) string {
-	rel, err := filepath.Rel(dir, target)
+	absDir, derr := filepath.Abs(dir)
+	absTarget, terr := filepath.Abs(target)
+	if derr != nil || terr != nil {
+		return filepath.ToSlash(target)
+	}
+	rel, err := filepath.Rel(absDir, absTarget)
 	if err != nil {
 		return filepath.ToSlash(target)
 	}
 	return path.Clean(filepath.ToSlash(rel))
+}
+
+// samePath reports whether a and b name the same file path.
+func samePath(a, b string) bool {
+	absA, aerr := filepath.Abs(a)
+	absB, berr := filepath.Abs(b)
+	if aerr != nil || berr != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return absA == absB
 }

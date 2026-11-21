@@ -187,3 +187,82 @@ func TestIndexWarnsWhenAgentsFileIsLong(t *testing.T) {
 		t.Fatalf("--max-lines 0 should disable the warning:\n%s", errOut)
 	}
 }
+
+// --nested with the output inside a top-level directory keeps that
+// directory's docs in the output instead of overwriting it with a subindex.
+func TestIndexNestedOutputInsideTopLevelDir(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "README.md"), "# Readme\n")
+	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "# Alpha\n")
+	mustWrite(t, filepath.Join(dir, "deploy", "b.md"), "# Beta\n")
+	chdir(t, dir)
+
+	_, _, err := run(t, "index", "--output", filepath.Join("docs", "INDEX.md"), "--nested")
+	expectCode(t, err, 0)
+	got, _ := os.ReadFile(filepath.Join("docs", "INDEX.md"))
+	if !strings.Contains(string(got), "](a.md)") || strings.Contains(string(got), "](INDEX.md)") {
+		t.Fatalf("docs/INDEX.md:\n%s", got)
+	}
+	_, _, err = run(t, "index", "--output", filepath.Join("docs", "INDEX.md"), "--nested", "--check")
+	expectCode(t, err, 0)
+}
+
+// The index follows renamed keys: a doc that sets the renamed required
+// fields is not Unmarked, and its renamed description is shown.
+func TestIndexFollowsRenamedKeys(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".nasc", "schema.yaml"),
+		"version: 1\nfields:\n  type: {type: string, required: true, key: nasc_type}\n  description: {type: string, required: true, key: nasc_desc}\n")
+	mustWrite(t, filepath.Join(dir, "a.md"), "---\ntype: page\nnasc_type: guide\nnasc_desc: Learn about A.\n---\n# A\n")
+	chdir(t, dir)
+	out, _, err := run(t, "index", "--strict")
+	expectCode(t, err, 0)
+	if strings.Contains(out, "Unmarked") || !strings.Contains(out, "Learn about A.") {
+		t.Fatalf("index:\n%s", out)
+	}
+}
+
+// Writing to a symlinked file updates the link target and keeps the link.
+func TestIndexWritesThroughSymlink(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "# Alpha\n")
+	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "# Agents\n")
+	if err := os.Symlink("AGENTS.md", filepath.Join(dir, "CLAUDE.md")); err != nil {
+		t.Skip("symlinks not supported")
+	}
+	chdir(t, dir)
+	_, _, err := run(t, "index", "--output", "CLAUDE.md")
+	expectCode(t, err, 0)
+	if info, err := os.Lstat("CLAUDE.md"); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("CLAUDE.md is no longer a symlink: %v", err)
+	}
+	if got, _ := os.ReadFile("AGENTS.md"); !strings.Contains(string(got), "Alpha") {
+		t.Fatalf("AGENTS.md:\n%s", got)
+	}
+}
+
+// --output - prints to stdout even when the config sets nested or pointer.
+func TestIndexStdoutOverridesConfigNested(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".nasc", "config.yaml"), "index:\n  output: INDEX.md\n  nested: true\n")
+	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "# Alpha\n")
+	chdir(t, dir)
+	out, _, err := run(t, "index", "--output", "-")
+	expectCode(t, err, 0)
+	if !strings.Contains(out, "Alpha") {
+		t.Fatalf("stdout:\n%s", out)
+	}
+}
+
+// Links stay relative when the output path is absolute and the root is not.
+func TestIndexAbsoluteOutputLinks(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "proj", "docs", "a.md"), "# Alpha\n")
+	chdir(t, dir)
+	_, _, err := run(t, "-C", "proj", "index", "--output", filepath.Join(dir, "proj", "INDEX.md"))
+	expectCode(t, err, 0)
+	got, _ := os.ReadFile(filepath.Join(dir, "proj", "INDEX.md"))
+	if !strings.Contains(string(got), "](docs/a.md)") {
+		t.Fatalf("INDEX.md:\n%s", got)
+	}
+}

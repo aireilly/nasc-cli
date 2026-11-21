@@ -57,6 +57,25 @@ func projectRoot() string {
 	}
 }
 
+// relToRoot returns p, a path given on the command line, relative to root and
+// slash-separated. Either may be absolute or relative to the current
+// directory. It fails when p lies outside root.
+func relToRoot(root, p string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absP, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, absP)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", ExitError{Code: 2, Msg: fmt.Sprintf("%s is outside the project root %s", p, root)}
+	}
+	return filepath.ToSlash(rel), nil
+}
+
 func relTo(base, target string) string {
 	if r, err := filepath.Rel(base, target); err == nil {
 		return r

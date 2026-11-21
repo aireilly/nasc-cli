@@ -44,15 +44,15 @@ type: runbook
 Download a binary for Linux, macOS, or Windows from the [releases page](https://github.com/aireilly/nasc-cli/releases), or install with Go 1.27 or newer:
 
 ```bash
-go install github.com/aireilly/nasc-cli/cmd/nasc@latest
+$ go install github.com/aireilly/nasc-cli/cmd/nasc@latest
 ```
 
 Or build from a clone:
 
 ```bash
-git clone https://github.com/aireilly/nasc-cli
-cd nasc-cli
-go build -o nasc ./cmd/nasc
+$ git clone https://github.com/aireilly/nasc-cli
+$ cd nasc-cli
+$ go build -o nasc ./cmd/nasc
 ```
 
 ## Quick start
@@ -63,20 +63,20 @@ You can run nasc from any directory in the repository. `nasc` walks up to the ne
 
 ```bash
 # Look at what you already have, and let nasc propose a schema.
-nasc schema infer
+$ nasc schema infer
 
 # Pin a schema in the repo so the rules are explicit, reviewable, and enforced.
-nasc schema init --preset agent-context
+$ nasc schema init --preset agent-context
 
 # Backfill metadata from file facts and git history. Review the diff before writing.
-nasc mark --source file,git
-nasc mark --source file,git --write
+$ nasc mark --source file,git
+$ nasc mark --source file,git --write
 
 # Generate the index agents read first.
-nasc index --output AGENTS.md
+$ nasc index --output AGENTS.md
 
 # Gate it in CI. Exit code 3 fails the job.
-nasc validate
+$ nasc validate
 ```
 
 ### Mapping directories to types
@@ -119,7 +119,7 @@ The `description` field is what a human scanning `AGENTS.md`, or an agent choosi
 Run it by adding `llm` to `--source` and passing the command to run:
 
 ```bash
-nasc mark --source file,git,llm --llm-cmd "claude -p"
+$ nasc mark --source file,git,llm --llm-cmd "claude -p"
 ```
 
 `--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. `nasc` splits the command with shell quoting rules and runs it directly, without a shell. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body.
@@ -127,7 +127,7 @@ nasc mark --source file,git,llm --llm-cmd "claude -p"
 Before a long run, check that the command works by running the following command:
 
 ```bash
-nasc doctor --llm
+$ nasc doctor --llm
 ```
 
 This sends one short test prompt and reports the reply or the error.
@@ -164,7 +164,7 @@ Agents load `AGENTS.md` at the start of every task, so each line in it costs tok
 * Write the full index to its own file and put a short pointer in `AGENTS.md`:
 
   ```bash
-  nasc index --output docs/INDEX.md --pointer AGENTS.md
+  $ nasc index --output docs/INDEX.md --pointer AGENTS.md
   ```
 
   This writes a few lines into `AGENTS.md` that tell the agent where the index is. The agent reads the index only when it needs to find documentation.
@@ -172,7 +172,7 @@ Agents load `AGENTS.md` at the start of every task, so each line in it costs tok
 * Write one index per top-level directory:
 
   ```bash
-  nasc index --output AGENTS.md --nested
+  $ nasc index --output AGENTS.md --nested
   ```
 
   This writes the docs at the top level into `AGENTS.md` with a link to `<dir>/AGENTS.md` for each top-level directory. Agents that read the nearest `AGENTS.md` load only the index for the part of the repository they work in.
@@ -195,7 +195,7 @@ paths:
 `nasc affected` lists the docs whose `paths` match the files a change touches:
 
 ```bash
-nasc affected --changed origin/main
+$ nasc affected --changed origin/main
 ```
 
 **Example output**
@@ -277,17 +277,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: aireilly/nasc-cli@v0.2.1
+      - uses: aireilly/nasc-cli@v0.2.2
         with:
-          version: v0.2.1
           args: validate --format github --changed origin/${{ github.base_ref }}
-      - uses: aireilly/nasc-cli@v0.2.1
+      - uses: aireilly/nasc-cli@v0.2.2
         with:
-          version: v0.2.1
-          args: index --check --output AGENTS.md
+          args: index --check
 ```
 
-The first step checks only the docs the pull request touches. The second step fails when `AGENTS.md` no longer matches the docs, so nobody can merge doc changes without regenerating it. Set `version` to the same tag as the `uses` line. Without it, the action installs the latest release, and a new nasc release can change your build. `--changed` needs the base branch history, which is why the checkout sets `fetch-depth: 0`.
+The first step checks only the docs the pull request touches. If the pull request changes `.nasc/schema.yaml`, `.nasc/config.yaml`, `.nasc/baseline.json`, or an ignore file, it checks every doc instead, because those files can change the result for all of them. `--changed` needs the base branch history, which is why the checkout sets `fetch-depth: 0`.
+
+The second step fails when the index no longer matches the docs, so nobody can merge doc changes without regenerating it. It reads the index location from `.nasc/config.yaml`, for example:
+
+```yaml
+index:
+  output: AGENTS.md
+```
+
+The action installs the `nasc` release that matches the tag in `uses`, so pinning the tag pins the binary, and a Dependabot or Renovate bump updates both. Set `version` only to install a different release.
 
 Generate descriptions with the `llm` source in a local `nasc mark` run and commit the result. CI stays deterministic and needs no API key.
 
@@ -305,22 +312,22 @@ You do not have to fix every existing doc before you turn on CI. Use one of thes
 ```yaml
 repos:
   - repo: https://github.com/aireilly/nasc-cli
-    rev: v0.2.1
+    rev: v0.2.2
     hooks:
       - id: nasc-validate
       - id: nasc-index-check
 ```
 
-`nasc-validate` checks the markdown files in the commit. `nasc-index-check` fails when the index is out of date, and needs `index.output` set in `.nasc/config.yaml`. pre-commit builds `nasc` with Go, so the first run takes longer.
+`nasc-validate` checks the markdown files in the commit and skips any outside the scan `root`. `nasc-index-check` fails when the index is out of date, and needs `index.output` set in `.nasc/config.yaml`. It also runs when a commit changes only `.nasc/` files or an index template. pre-commit builds `nasc` with Go, so the first run takes longer.
 
 ### Other CI systems
 
 Install a release binary from the [releases page](https://github.com/aireilly/nasc-cli/releases), or build with Go:
 
 ```bash
-go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.1
-nasc validate --changed origin/main
-nasc index --check --output AGENTS.md
+$ go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.2
+$ nasc validate --changed origin/main
+$ nasc index --check
 ```
 
 ## Exit codes

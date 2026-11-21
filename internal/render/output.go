@@ -94,7 +94,7 @@ func Findings(w io.Writer, fs []validate.Finding, format Format) error {
 				title += " (" + f.Field + ")"
 			}
 			if _, err := fmt.Fprintf(w, "::%s file=%s,line=1,title=%s::%s\n",
-				level, ghProperty(f.Path), ghProperty(title), ghData(f.Message)); err != nil {
+				level, GitHubProperty(f.Path), GitHubProperty(title), GitHubData(f.Message)); err != nil {
 				return err
 			}
 		}
@@ -109,16 +109,16 @@ func Findings(w io.Writer, fs []validate.Finding, format Format) error {
 	}
 }
 
-// ghData escapes a workflow command message.
-func ghData(s string) string {
+// GitHubData escapes a GitHub Actions workflow command message.
+func GitHubData(s string) string {
 	s = strings.ReplaceAll(s, "%", "%25")
 	s = strings.ReplaceAll(s, "\r", "%0D")
 	return strings.ReplaceAll(s, "\n", "%0A")
 }
 
-// ghProperty escapes a workflow command property value.
-func ghProperty(s string) string {
-	s = ghData(s)
+// GitHubProperty escapes a GitHub Actions workflow command property value.
+func GitHubProperty(s string) string {
+	s = GitHubData(s)
 	s = strings.ReplaceAll(s, ":", "%3A")
 	return strings.ReplaceAll(s, ",", "%2C")
 }

@@ -39,3 +39,16 @@ func TestAffected(t *testing.T) {
 	_, _, err = run(t, "affected")
 	expectCode(t, err, 2)
 }
+
+// Annotation properties are escaped, so a comma in a path does not end the
+// file property early.
+func TestAffectedGitHubEscapesPaths(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "docs", "router.md"), "---\ntitle: Router\npaths: [\"pkg/router/**\"]\n---\n")
+	chdir(t, dir)
+	out, _, err := run(t, "affected", "--format", "github", "pkg/router/a,b.go")
+	expectCode(t, err, 0)
+	if !strings.Contains(out, "file=pkg/router/a%2Cb.go,") {
+		t.Fatalf("github:\n%s", out)
+	}
+}

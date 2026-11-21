@@ -206,7 +206,7 @@ func evalTerm(s string, ctx EvalContext) (term, error) {
 		name := strings.TrimSpace(s[len("days_since(") : len(s)-1])
 		v, ok := ctx.field(name)
 		if !ok {
-			return term{}, fmt.Errorf("days_since: %s is not set; guard the rule with when: exists(%s)", name, name)
+			return term{}, fmt.Errorf("days_since: %s is not set (guard the rule with when: exists(%s))", name, name)
 		}
 		t, err := time.Parse("2006-01-02", v.String())
 		if err != nil {

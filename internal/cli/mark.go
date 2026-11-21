@@ -100,6 +100,11 @@ during --write.`,
 				if len(rep.Failures) > 0 {
 					return ExitError{Code: 4, Msg: "llm source failed"}
 				}
+				if !anyDerived(s, sources) {
+					// mark only fills fields the schema declares a derive for,
+					// and a schema written by `schema infer` declares none.
+					fmt.Fprintf(stderr, "nasc: no field in .nasc/schema.yaml has a derive that the %s source(s) fill. Add derive: to the fields mark should fill (for example derive: h1 on title).\n", strings.Join(sources, ", "))
+				}
 				return ExitError{Code: 1, Msg: "nothing to mark"}
 			}
 
@@ -153,12 +158,41 @@ during --write.`,
 	c.Flags().StringVar(&sourceCSV, "source", "file,git", "comma-separated sources: file,git,llm")
 	c.Flags().BoolVar(&write, "write", false, "apply changes in place")
 	c.Flags().BoolVar(&dryRun, "dry-run", true, "print the diff without writing")
-	c.Flags().StringVar(&llmCmd, "llm-cmd", "", "agent command for the llm source, e.g. 'claude -p'")
-	c.Flags().StringVar(&llmTimeout, "llm-timeout", "", "limit for one llm call, e.g. 90s (default 2m)")
+	// --patch was a no-op: the diff is what mark prints without --write.
+	// Keep accepting it so existing scripts do not break.
+	c.Flags().Bool("patch", false, "print the diff without writing")
+	_ = c.Flags().MarkDeprecated("patch", "the diff is the default when --write is not set")
+	c.Flags().StringVar(&llmCmd, "llm-cmd", "", "agent command for the llm source, for example 'claude -p'")
+	c.Flags().StringVar(&llmTimeout, "llm-timeout", "", "limit for one llm call, for example 90s (default 2m)")
 	c.Flags().IntVar(&jobs, "jobs", 0, "documents to process at once (default 4)")
 	c.Flags().BoolVar(&noCache, "no-cache", false, "ask the llm again instead of reusing replies stored in .nasc/cache")
 	c.Flags().BoolVar(&force, "force", false, "overwrite human-set values (loud, not default)")
 	return c
+}
+
+// sourceDerives lists the derive kinds each mark source fills.
+var sourceDerives = map[string][]string{
+	"file": {"slug", "h1", "parent-dir"},
+	"git":  {"git-last-change", "codeowners"},
+	"llm":  {"llm"},
+}
+
+// anyDerived reports whether any schema field has a derive that one of
+// sources fills.
+func anyDerived(s *schema.Schema, sources []string) bool {
+	if s == nil {
+		return false
+	}
+	for _, f := range s.Fields {
+		for _, src := range sources {
+			for _, k := range sourceDerives[src] {
+				if f.Derive == k {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func parseTimeout(s string) (time.Duration, error) {
@@ -179,7 +213,7 @@ func reportFailures(w io.Writer, fs []mark.Failure) {
 	for _, f := range fs {
 		fmt.Fprintf(w, "nasc: %s: %s source: %v\n", f.Path, f.Source, f.Err)
 	}
-	fmt.Fprintf(w, "nasc: the llm source failed for %d document(s); their other fields are still marked\n", len(fs))
+	fmt.Fprintf(w, "nasc: the llm source failed for %d document(s). Their other fields are still marked.\n", len(fs))
 }
 
 func reportSkipped(w io.Writer, skipped []mark.Skip) {

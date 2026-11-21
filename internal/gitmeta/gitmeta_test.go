@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -359,12 +360,16 @@ func TestChangedFiles(t *testing.T) {
 	if err := writeFile(dir, "docs/untracked.md", "u"); err != nil {
 		t.Fatal(err)
 	}
+	// A non-ASCII name must come back unquoted.
+	if err := writeFile(dir, "docs/café.md", "c"); err != nil {
+		t.Fatal(err)
+	}
 
-	got, err := ChangedFiles(dir, "main")
+	got, err := ChangedFiles(dir, "main", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"docs/committed.md": true, "docs/old.md": true, "docs/untracked.md": true}
+	want := map[string]bool{"docs/committed.md": true, "docs/old.md": true, "docs/untracked.md": true, "docs/café.md": true}
 	if len(got) != len(want) {
 		t.Fatalf("ChangedFiles = %v", got)
 	}
@@ -375,9 +380,30 @@ func TestChangedFiles(t *testing.T) {
 	}
 
 	// From a subdirectory root, paths are relative to it.
-	got, err = ChangedFiles(filepath.Join(dir, "docs"), "main")
-	if err != nil || len(got) != 3 || got[0][:5] == "docs/" {
+	got, err = ChangedFiles(filepath.Join(dir, "docs"), "main", false)
+	if err != nil || len(got) != 4 || strings.HasPrefix(got[0], "docs/") {
 		t.Fatalf("ChangedFiles(sub) = %v, %v", got, err)
+	}
+
+	// withDeleted also lists files the change removed.
+	cmd = exec.Command("git", "rm", "-qf", "docs/old.md")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	got, _ = ChangedFiles(dir, "main", false)
+	for _, g := range got {
+		if g == "docs/old.md" {
+			t.Fatalf("deleted file listed without withDeleted: %v", got)
+		}
+	}
+	got, _ = ChangedFiles(dir, "main", true)
+	found := false
+	for _, g := range got {
+		found = found || g == "docs/old.md"
+	}
+	if !found {
+		t.Fatalf("withDeleted should list docs/old.md: %v", got)
 	}
 	if Prefix(filepath.Join(dir, "docs")) != "docs/" {
 		t.Fatalf("Prefix = %q", Prefix(filepath.Join(dir, "docs")))

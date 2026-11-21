@@ -24,7 +24,13 @@ var (
 func Available(root string) bool {
 	availMu.Lock()
 	defer availMu.Unlock()
-	if v, ok := availCache[root]; ok {
+	// Key by absolute path: a relative root such as "." means a different
+	// directory after a chdir.
+	key := root
+	if abs, err := filepath.Abs(root); err == nil {
+		key = abs
+	}
+	if v, ok := availCache[key]; ok {
 		return v
 	}
 	ok := false
@@ -33,7 +39,7 @@ func Available(root string) bool {
 		cmd.Dir = root
 		ok = cmd.Run() == nil
 	}
-	availCache[root] = ok
+	availCache[key] = ok
 	return ok
 }
 
@@ -147,24 +153,31 @@ func Prefix(root string) string {
 
 // ChangedFiles lists files under root that differ from the merge base of ref
 // and HEAD: commits on this branch, uncommitted edits, and untracked files.
-// Paths are relative to root. Deleted files are left out.
-func ChangedFiles(root, ref string) ([]string, error) {
+// Paths are relative to root. Deleted files are left out unless withDeleted
+// is set, in which case a deleted file, and the old path of a renamed one,
+// are listed too.
+func ChangedFiles(root, ref string, withDeleted bool) ([]string, error) {
 	base, err := git(root, "merge-base", ref, "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("cannot find a merge base with %q (in CI, fetch it first, for example with fetch-depth: 0): %w", ref, err)
 	}
-	diff, err := git(root, "diff", "--name-only", "--relative", "--diff-filter=ACMR", strings.TrimSpace(base), "--", ".")
+	// -z keeps paths unquoted, so names with non-ASCII bytes come through
+	// as they are on disk.
+	args := []string{"diff", "--name-only", "-z", "--relative", "--diff-filter=ACMR"}
+	if withDeleted {
+		args = []string{"diff", "--name-only", "-z", "--relative", "--no-renames", "--diff-filter=ACMD"}
+	}
+	diff, err := git(root, append(args, strings.TrimSpace(base), "--", ".")...)
 	if err != nil {
 		return nil, err
 	}
-	untracked, err := git(root, "ls-files", "--others", "--exclude-standard", "--", ".")
+	untracked, err := git(root, "ls-files", "-z", "--others", "--exclude-standard", "--", ".")
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
 	var out []string
-	for _, l := range strings.Split(diff+"\n"+untracked, "\n") {
-		l = strings.TrimSpace(l)
+	for _, l := range strings.Split(diff+"\x00"+untracked, "\x00") {
 		if l != "" && !seen[l] {
 			seen[l] = true
 			out = append(out, l)

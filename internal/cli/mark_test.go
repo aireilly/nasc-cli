@@ -216,3 +216,18 @@ func TestMarkReportsUnmappedDirectories(t *testing.T) {
 		t.Fatalf("expected deploy/dev listed as unmapped, got:\n%s", errOut.String())
 	}
 }
+
+// A schema with no derive keys (such as one `schema infer` writes) gets a
+// hint instead of a bare "nothing to mark", and the old --patch flag still
+// parses.
+func TestMarkHintsWhenSchemaHasNoDerive(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".nasc", "schema.yaml"), "version: 1\nfields:\n  title: {type: string}\n")
+	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "# A\n")
+	chdir(t, dir)
+	_, errOut, err := run(t, "mark", "--source", "file", "--patch")
+	expectCode(t, err, 1)
+	if !strings.Contains(errOut, "derive") {
+		t.Fatalf("expected a derive hint, got:\n%s", errOut)
+	}
+}

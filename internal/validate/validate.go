@@ -83,10 +83,16 @@ func checkFields(d model.Doc, s *schema.Schema) []Finding {
 
 func checkRule(d model.Doc, r schema.Rule, root string, now time.Time, aliases map[string]string, files *FileList) []Finding {
 	ctx := EvalContext{Doc: d, Root: root, Today: now, Aliases: aliases, Files: files}
+	sev := r.Severity
+	if sev == "" {
+		sev = "error"
+	}
+	// An expression that cannot be evaluated takes the rule's own severity,
+	// so a broken value in a warn rule does not fail CI.
 	if r.When != "" {
 		gate, err := EvalIn(r.When, ctx)
 		if err != nil {
-			return []Finding{{d.Path, "", r.Name, "error", "when-clause error: " + err.Error()}}
+			return []Finding{{d.Path, "", r.Name, sev, "when-clause error: " + err.Error()}}
 		}
 		if !gate {
 			return nil
@@ -94,14 +100,10 @@ func checkRule(d model.Doc, r schema.Rule, root string, now time.Time, aliases m
 	}
 	ok, err := EvalIn(r.Assert, ctx)
 	if err != nil {
-		return []Finding{{d.Path, "", r.Name, "error", "rule error: " + err.Error()}}
+		return []Finding{{d.Path, "", r.Name, sev, "rule error: " + err.Error()}}
 	}
 	if ok {
 		return nil
-	}
-	sev := r.Severity
-	if sev == "" {
-		sev = "error"
 	}
 	field := ruleField(r)
 	return []Finding{{d.Path, field, r.Name, sev, r.Message}}

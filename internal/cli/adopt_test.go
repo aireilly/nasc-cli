@@ -151,3 +151,20 @@ func TestValidateGitHubFormat(t *testing.T) {
 		t.Fatalf("got:\n%s", out)
 	}
 }
+
+// Absolute paths name docs as well as relative ones.
+func TestValidateAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".nasc", "schema.yaml"), strictSchema)
+	mustWrite(t, filepath.Join(dir, "good", "a.md"), "---\ntitle: A\n---\n")
+	mustWrite(t, filepath.Join(dir, "bad", "b.md"), "no title\n")
+	chdir(t, dir)
+	_, _, err := run(t, "validate", "--format", "jsonl", filepath.Join(dir, "good", "a.md"))
+	expectCode(t, err, 0)
+	_, _, err = run(t, "validate", "--format", "jsonl", filepath.Join(dir, "bad"))
+	expectCode(t, err, 3)
+	_, _, err = run(t, "affected", filepath.Join(dir, "good", "a.md"))
+	expectCode(t, err, 0)
+	_, _, err = run(t, "validate", "--format", "jsonl", filepath.Dir(dir))
+	expectCode(t, err, 2) // outside the root
+}

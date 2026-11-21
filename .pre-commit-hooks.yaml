@@ -12,5 +12,6 @@
   description: Fail when the generated index is out of date. Needs index.output in .nasc/config.yaml.
   entry: nasc index --check
   language: golang
-  files: \.(md|mdx|markdown)$
+  # Config and template changes can change the index without touching a doc.
+  files: (\.(md|mdx|markdown|tmpl)$|^\.nasc/(config|schema)\.yaml$)
   pass_filenames: false

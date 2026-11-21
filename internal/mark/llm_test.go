@@ -152,6 +152,24 @@ func TestNormaliseList(t *testing.T) {
 	if got.Str != `["kind","vllm"]` {
 		t.Fatalf("got %s", got.Str)
 	}
+	// The vocabulary matches without regard to case and keeps its spelling.
+	got = normaliseList(v, schema.Field{Type: "list", Vocabulary: []string{"Kubernetes", "vLLM"}})
+	if got.Str != `["Kubernetes","vLLM"]` {
+		t.Fatalf("got %s", got.Str)
+	}
+}
+
+// A reply whose tags all fall outside the vocabulary is rejected rather than
+// written as an empty list that later runs would treat as set.
+func TestRunLLMRejectsListEmptiedByVocabulary(t *testing.T) {
+	req := LLMRequest{Want: []string{"tags"}, Schema: map[string]schema.Field{"tags": {Type: "list", Vocabulary: []string{"api"}}}}
+	got, rejected, err := RunLLM(LLMConfig{Cmd: `printf '{"tags":["other"]}'`}, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["tags"]; ok || len(rejected) != 1 {
+		t.Fatalf("got %v, rejected %v", got, rejected)
+	}
 }
 
 func TestBuildPromptOffersTagHints(t *testing.T) {

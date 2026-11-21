@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aireilly/nasc-cli/internal/model"
 	"github.com/aireilly/nasc-cli/internal/schema"
@@ -98,7 +99,11 @@ func RunLLM(cfg LLMConfig, req LLMRequest) (got map[string]model.Value, rejected
 		}
 		msg := strings.TrimSpace(errbuf.String())
 		if len(msg) > 300 {
-			msg = msg[:300] + "…"
+			cut := 300
+			for cut > 0 && !utf8.RuneStart(msg[cut]) {
+				cut-- // do not split a multi-byte character
+			}
+			msg = msg[:cut] + "…"
 		}
 		if msg == "" {
 			return nil, nil, fmt.Errorf("llm command failed: %v", rerr)
@@ -123,7 +128,22 @@ func RunLLM(cfg LLMConfig, req LLMRequest) (got map[string]model.Value, rejected
 			continue
 		}
 		if f, ok := req.Schema[key]; ok && v.Kind == model.KindList {
+			before := v.Len()
 			v = normaliseList(v, f)
+			if before > 0 && v.Len() == 0 && len(f.Vocabulary) > 0 {
+				// Writing an empty list would mark the field as set and stop
+				// later runs from filling it, so ask again instead.
+				rejected = append(rejected, key+" used no values from the vocabulary ("+strings.Join(f.Vocabulary, ", ")+")")
+				continue
+			}
+		}
+		if f, ok := req.Schema[key]; ok && v.Kind == model.KindString && len(f.Vocabulary) > 0 {
+			canon, ok := vocabularyValue(f.Vocabulary, v.Str)
+			if !ok {
+				rejected = append(rejected, key+" was not one of "+strings.Join(f.Vocabulary, ", "))
+				continue
+			}
+			v.Str = canon
 		}
 		if f, ok := req.Schema[key]; ok {
 			if why := boundsProblem(v, f); why != "" {
@@ -169,7 +189,11 @@ func buildPrompt(req LLMRequest) string {
 		default:
 			f := req.Schema[w]
 			if f.Type != "list" && w != "tags" {
-				b.WriteString("  \"" + w + "\": a concise, accurate value.\n")
+				line := "  \"" + w + "\": a concise, accurate value."
+				if len(f.Vocabulary) > 0 {
+					line += " Use exactly one of: " + strings.Join(f.Vocabulary, ", ") + "."
+				}
+				b.WriteString(line + "\n")
 				continue
 			}
 			line := "  \"" + w + "\": an array of short lowercase topic strings."
@@ -236,18 +260,23 @@ func coerceLLM(raw json.RawMessage) (model.Value, bool) {
 // field's maximum, so a slightly long or messy tag list is fixed rather than
 // rejected.
 func normaliseList(v model.Value, f schema.Field) model.Value {
-	allowed := map[string]bool{}
-	for _, a := range f.Vocabulary {
-		allowed[a] = true
-	}
 	seen := map[string]bool{}
 	out := []string{}
 	for _, item := range v.List() {
 		item = strings.ToLower(strings.TrimSpace(item))
-		if item == "" || seen[item] {
+		if item == "" {
 			continue
 		}
-		if len(allowed) > 0 && !allowed[item] {
+		if len(f.Vocabulary) > 0 {
+			// Match the vocabulary without regard to case and keep its
+			// spelling, so a vocabulary such as [API, CLI] still matches.
+			canon, ok := vocabularyValue(f.Vocabulary, item)
+			if !ok {
+				continue
+			}
+			item = canon
+		}
+		if seen[item] {
 			continue
 		}
 		seen[item] = true
@@ -258,6 +287,17 @@ func normaliseList(v model.Value, f schema.Field) model.Value {
 	}
 	b, _ := json.Marshal(out)
 	return model.Value{Kind: model.KindList, Str: string(b)}
+}
+
+// vocabularyValue returns the vocabulary entry that equals s, ignoring case.
+func vocabularyValue(vocab []string, s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	for _, a := range vocab {
+		if strings.EqualFold(a, s) {
+			return a, true
+		}
+	}
+	return "", false
 }
 
 // boundsProblem describes how v breaks f's length bounds, or "" when it fits.

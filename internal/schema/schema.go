@@ -139,7 +139,7 @@ func (s *Schema) validate() error {
 		}
 		keys[key] = name
 		if len(f.Map) > 0 && f.Derive != "parent-dir" {
-			return fmt.Errorf("field %q has a map but derive is %q; map only applies to derive: parent-dir", name, f.Derive)
+			return fmt.Errorf("field %q has a map but derive is %q (map only applies to derive: parent-dir)", name, f.Derive)
 		}
 		if len(f.Enum) > 0 {
 			for dir, v := range f.Map {

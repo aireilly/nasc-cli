@@ -65,6 +65,9 @@ type IndexData struct {
 	Groups     []Group
 	Unmarked   []model.Doc
 	Subindexes []Subindex
+	// Keys maps a schema field name to the frontmatter key that stores it,
+	// for fields the schema renames, so fieldOr follows the rename.
+	Keys map[string]string
 }
 
 // Lines counts the lines in a rendered index.
@@ -103,7 +106,7 @@ func BuildIndex(docs []model.Doc, s *schema.Schema) IndexData {
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].Type < groups[j].Type })
 	sort.Slice(unmarked, func(i, j int) bool { return unmarked[i].Path < unmarked[j].Path })
-	return IndexData{Groups: groups, Unmarked: unmarked}
+	return IndexData{Groups: groups, Unmarked: unmarked, Keys: s.Aliases()}
 }
 
 func missingRequired(d model.Doc, s *schema.Schema) bool {
@@ -111,7 +114,7 @@ func missingRequired(d model.Doc, s *schema.Schema) bool {
 		if !f.Required {
 			continue
 		}
-		if v, ok := d.Field(name); !ok || v.IsZero() {
+		if v, ok := d.Field(s.Key(name)); !ok || v.IsZero() {
 			return true
 		}
 	}
@@ -143,6 +146,9 @@ func Index(w io.Writer, data IndexData, tmpl string) error {
 	}
 	funcs := template.FuncMap{
 		"fieldOr": func(d model.Doc, key, fallback string) string {
+			if k, ok := data.Keys[key]; ok {
+				key = k
+			}
 			if v, ok := d.Field(key); ok && !v.IsZero() {
 				return v.String()
 			}

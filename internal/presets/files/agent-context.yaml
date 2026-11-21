@@ -57,7 +57,7 @@ rules:
     when: exists(description)
     assert: length(description) >= 30
     severity: error
-    message: >
+    message: >-
       description should say, in direct active language, what a reader learns or
       can do after loading this doc. Too short to guide a human or an agent.
   - name: paths-still-resolve
@@ -69,6 +69,6 @@ rules:
     when: exists(lastUpdated)
     assert: days_since(lastUpdated) <= 365
     severity: warn
-    message: >
+    message: >-
       The body of this doc has not changed in over a year. Check that it still
       matches the code it describes.

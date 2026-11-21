@@ -23,7 +23,13 @@ func TestMatch(t *testing.T) {
 		{"pkg/router/**", "pkg/router/x.go", true},
 		{"pkg/router/**", "pkg/other/x.go", false},
 		{"", "a.md", false},
-		{"[", "a.md", false}, // invalid pattern never matches
+		{"[", "a.md", false},                // invalid pattern never matches
+		{"docs/**/*.md", "docs/a.md", true}, // `**/` matches zero directories
+		{"docs/**/*.md", "docs/x/y/a.md", true},
+		{"pkg/**/*.go", "pkg/x.go", true},
+		{"a/**/b/**/c.md", "a/b/c.md", true},
+		{"/CHANGELOG.md", "CHANGELOG.md", true}, // a leading slash anchors
+		{"/CHANGELOG.md", "pkg/CHANGELOG.md", false},
 	}
 	for _, c := range cases {
 		if got := Match(c.pattern, c.rel); got != c.want {

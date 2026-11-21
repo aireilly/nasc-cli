@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -15,6 +14,7 @@ import (
 	"github.com/aireilly/nasc-cli/internal/gitmeta"
 	"github.com/aireilly/nasc-cli/internal/globs"
 	"github.com/aireilly/nasc-cli/internal/model"
+	"github.com/aireilly/nasc-cli/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -35,8 +35,9 @@ func newAffectedCmd() *cobra.Command {
 which docs a code change might make wrong.
 
 Pass the changed files, or --changed <ref> to use everything that differs from
-the merge base with <ref>. A doc counts as updated when it is itself one of the
-changed files.
+the merge base with <ref>, including deleted files and the old path of a
+renamed one. A doc counts as updated when it is itself one of the changed
+files.
 
 --format github prints a warning annotation on each changed file that a doc
 covers, unless every covering doc was updated too. --fail exits 3 when a
@@ -51,17 +52,17 @@ covering doc was not updated.`,
 			}
 			var files []string
 			for _, a := range args {
-				rel, rerr := filepath.Rel(cfg.Root, a)
-				if rerr != nil || strings.HasPrefix(rel, "..") {
-					return ExitError{Code: 2, Msg: fmt.Sprintf("%s is outside the project root %s", a, cfg.Root)}
+				rel, rerr := relToRoot(cfg.Root, a)
+				if rerr != nil {
+					return rerr
 				}
-				files = append(files, filepath.ToSlash(rel))
+				files = append(files, rel)
 			}
 			if changed != "" {
 				if !gitmeta.Available(cfg.Root) {
 					return ExitError{Code: 2, Msg: "--changed needs git and a work tree"}
 				}
-				more, cerr := gitmeta.ChangedFiles(cfg.Root, changed)
+				more, cerr := gitmeta.ChangedFiles(cfg.Root, changed, true)
 				if cerr != nil {
 					return ExitError{Code: 2, Msg: cerr.Error()}
 				}
@@ -95,7 +96,7 @@ covering doc was not updated.`,
 			return nil
 		},
 	}
-	c.Flags().StringVar(&changed, "changed", "", "use files changed since the merge base with this git ref, e.g. origin/main")
+	c.Flags().StringVar(&changed, "changed", "", "use files changed since the merge base with this git ref, for example origin/main")
 	c.Flags().StringVar(&format, "format", "", "output format: table|jsonl|github")
 	c.Flags().BoolVar(&fail, "fail", false, "exit 3 when a covering doc was not updated")
 	return c
@@ -164,8 +165,9 @@ func writeAffectedGitHub(w io.Writer, hits []affectedDoc, prefix string) {
 	sort.Strings(files)
 	for _, f := range files {
 		docs := byFile[f]
-		fmt.Fprintf(w, "::warning file=%s,title=nasc affected docs::%s cover%s this file. Check that %s still match%s the change.\n",
-			prefix+f, strings.Join(docs, ", "), plural(len(docs), "s", ""), plural(len(docs), "it", "they"), plural(len(docs), "es", ""))
+		msg := fmt.Sprintf("%s cover%s this file. Check that %s still match%s the change.",
+			strings.Join(docs, ", "), plural(len(docs), "s", ""), plural(len(docs), "it", "they"), plural(len(docs), "es", ""))
+		fmt.Fprintf(w, "::warning file=%s,title=nasc affected docs::%s\n", render.GitHubProperty(prefix+f), render.GitHubData(msg))
 	}
 }
 

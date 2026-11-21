@@ -51,11 +51,11 @@ whether a usable reply came back. This spends one call.`,
 					keys = append(keys, k)
 				}
 				sort.Strings(keys)
-				fmt.Fprintf(w, "site generator: %s in %s (mark leaves %s alone there; rename with `key:` in the schema)\n",
+				fmt.Fprintf(w, "site generator: %s in %s (mark leaves %s alone there unless the schema renames the field with `key:`)\n",
 					site.Name, site.Dir, strings.Join(keys, ", "))
 			}
 			if cerr == nil {
-				reportCorpus(w)
+				reportCorpus(cmd, w)
 			}
 			if testLLM {
 				reportLLM(w, cfg)
@@ -69,8 +69,8 @@ whether a usable reply came back. This spends one call.`,
 
 // reportCorpus prints how many docs pass validation and how many lack
 // schema-required fields.
-func reportCorpus(w io.Writer) {
-	docs, cfg, s, isDefault, err := loadAll(&cobra.Command{})
+func reportCorpus(cmd *cobra.Command, w io.Writer) {
+	docs, cfg, s, isDefault, err := loadAll(cmd)
 	if err != nil {
 		fmt.Fprintf(w, "corpus: %v\n", err)
 		return

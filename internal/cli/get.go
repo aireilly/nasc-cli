@@ -6,6 +6,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/aireilly/nasc-cli/internal/parse"
@@ -18,7 +19,12 @@ func newGetCmd() *cobra.Command {
 		Short: "Read one frontmatter value from a document.",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			data, err := os.ReadFile(args[0])
+			// Like git -C, a relative path is read from the -C directory.
+			p := args[0]
+			if rootFlag != "" && !filepath.IsAbs(p) {
+				p = filepath.Join(rootFlag, p)
+			}
+			data, err := os.ReadFile(p)
 			if err != nil {
 				return ExitError{Code: 2, Msg: err.Error()}
 			}

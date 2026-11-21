@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -50,7 +52,7 @@ records today's findings so only new problems fail CI.`,
 
 			scoped := len(args) > 0 || changed != ""
 			if scoped {
-				docs, err = scopeDocs(docs, cfg.Root, args, changed)
+				docs, err = scopeDocs(stderr, docs, cfg.Root, args, changed)
 				if err != nil {
 					return err
 				}
@@ -62,7 +64,7 @@ records today's findings so only new problems fail CI.`,
 
 			findings := validate.Check(docs, s, cfg.Root)
 			if isDefault {
-				fmt.Fprintf(stderr, "nasc: no .nasc/schema.yaml; checking against the built-in %q default as warnings only (run `nasc schema init` to enforce)\n", defaultPreset)
+				fmt.Fprintf(stderr, "nasc: no .nasc/schema.yaml, so checking against the built-in %q default as warnings only (run `nasc schema init` to enforce)\n", defaultPreset)
 				for i := range findings {
 					findings[i].Severity = "warn"
 				}
@@ -72,7 +74,7 @@ records today's findings so only new problems fail CI.`,
 			switch baselineMode {
 			case "write":
 				if scoped {
-					return ExitError{Code: 2, Msg: "--baseline write records the whole corpus; drop the paths and --changed"}
+					return ExitError{Code: 2, Msg: "--baseline write records the whole corpus, so drop the paths and --changed"}
 				}
 				n, werr := writeBaseline(blPath, findings)
 				if werr != nil {
@@ -96,7 +98,7 @@ records today's findings so only new problems fail CI.`,
 						fmt.Fprintf(stderr, "nasc: %d known finding(s) suppressed by %s\n", suppressed, blPath)
 					}
 					if fixed > 0 {
-						fmt.Fprintf(stderr, "nasc: %d baseline finding(s) are fixed; run `nasc validate --baseline write` to shrink the baseline\n", fixed)
+						fmt.Fprintf(stderr, "nasc: %d baseline finding(s) are fixed. Run `nasc validate --baseline write` to shrink the baseline.\n", fixed)
 					}
 				}
 			}
@@ -122,8 +124,8 @@ records today's findings so only new problems fail CI.`,
 	c.Flags().StringVar(&format, "format", "", "output format: table|json|jsonl|paths|github")
 	c.Flags().BoolVar(new(bool), "json", false, "shorthand for --format json")
 	c.Flags().StringVar(&minSeverity, "severity", "warn", "minimum severity to report: warn|error")
-	c.Flags().StringVar(&changed, "changed", "", "check only docs changed since the merge base with this git ref, e.g. origin/main")
-	c.Flags().StringVar(&baselineMode, "baseline", "", "write: record current findings in .nasc/baseline.json; ignore: do not apply it")
+	c.Flags().StringVar(&changed, "changed", "", "check only docs changed since the merge base with this git ref, for example origin/main")
+	c.Flags().StringVar(&baselineMode, "baseline", "", "write records current findings in .nasc/baseline.json, ignore skips the baseline")
 	// Map --json to --format json.
 	c.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if j, _ := cmd.Flags().GetBool("json"); j && format == "" {
@@ -136,15 +138,21 @@ records today's findings so only new problems fail CI.`,
 
 // scopeDocs keeps the docs named by args (files or directories, relative to
 // the current directory) and, with ref set, the docs changed since ref.
-func scopeDocs(docs []model.Doc, root string, args []string, ref string) ([]model.Doc, error) {
+func scopeDocs(stderr io.Writer, docs []model.Doc, root string, args []string, ref string) ([]model.Doc, error) {
 	want := map[string]bool{}
 	var dirs []string
 	for _, a := range args {
-		rel, err := filepath.Rel(root, a)
-		if err != nil || strings.HasPrefix(rel, "..") {
-			return nil, ExitError{Code: 2, Msg: fmt.Sprintf("%s is outside the project root %s", a, root)}
+		rel, err := relToRoot(root, a)
+		if err != nil {
+			// A file outside the scan root cannot be a doc. pre-commit passes
+			// every staged markdown file, so skip it rather than fail. A
+			// directory outside the root is a mistake, so it stays an error.
+			if isDir(a) {
+				return nil, err
+			}
+			fmt.Fprintf(stderr, "nasc: skipping %s, it is outside the scan root\n", a)
+			continue
 		}
-		rel = filepath.ToSlash(rel)
 		if isDir(a) {
 			if rel == "." {
 				return docs, nil
@@ -158,12 +166,18 @@ func scopeDocs(docs []model.Doc, root string, args []string, ref string) ([]mode
 		if !gitmeta.Available(root) {
 			return nil, ExitError{Code: 2, Msg: "--changed needs git and a work tree"}
 		}
-		files, err := gitmeta.ChangedFiles(root, ref)
+		files, err := gitmeta.ChangedFiles(root, ref, false)
 		if err != nil {
 			return nil, ExitError{Code: 2, Msg: err.Error()}
 		}
 		for _, f := range files {
 			want[f] = true
+		}
+		// A change to the schema, config, baseline, or ignore files can change
+		// the result for every doc, so check them all.
+		if f := settingsChanged(ref); f != "" {
+			fmt.Fprintf(stderr, "nasc: %s changed, so checking every doc\n", f)
+			return docs, nil
 		}
 	}
 	var out []model.Doc
@@ -296,4 +310,22 @@ func hasErrors(fs []validate.Finding) bool {
 		}
 	}
 	return false
+}
+
+// settingsChanged returns the first file that changed since the merge base
+// with ref and that affects every doc's result, or "" when there is none.
+func settingsChanged(ref string) string {
+	files, err := gitmeta.ChangedFiles(projectRoot(), ref, true)
+	if err != nil {
+		return ""
+	}
+	for _, f := range files {
+		switch {
+		case f == ".nasc/schema.yaml", f == ".nasc/config.yaml", f == ".nasc/baseline.json":
+			return f
+		case path.Base(f) == ".nascignore", path.Base(f) == ".gitignore":
+			return f
+		}
+	}
+	return ""
 }

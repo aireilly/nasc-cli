@@ -8,9 +8,10 @@ branding:
 inputs:
   version:
     description: >
-      nasc release to install, for example v0.2.0. Pin a version so that a new
-      release cannot change your build. "latest" works but prints a warning.
-    default: latest
+      nasc release to install. Leave it unset to install the release that
+      matches the action's own tag, so pinning `uses:` pins the binary too.
+      "latest" works but prints a warning.
+    default: ""
   args:
     description: >
       Arguments passed to nasc, split on spaces. The default checks every doc
@@ -27,6 +28,7 @@ runs:
       shell: bash
       env:
         NASC_VERSION: ${{ inputs.version }}
+        NASC_ACTION_REF: ${{ github.action_ref }}
         GH_TOKEN: ${{ github.token }}
       run: '"$GITHUB_ACTION_PATH/scripts/install-action.sh"'
     - name: Run nasc
