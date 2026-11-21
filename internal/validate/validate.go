@@ -5,6 +5,7 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aireilly/nasc-cli/internal/model"
@@ -25,10 +26,11 @@ func Check(docs []model.Doc, s *schema.Schema, root string) []Finding {
 	var out []Finding
 	now := time.Now()
 	aliases := s.Aliases()
+	files := NewFileList(root)
 	for _, d := range docs {
 		out = append(out, checkFields(d, s)...)
 		for _, r := range s.Rules {
-			out = append(out, checkRule(d, r, root, now, aliases)...)
+			out = append(out, checkRule(d, r, root, now, aliases, files)...)
 		}
 	}
 	return out
@@ -63,12 +65,24 @@ func checkFields(d model.Doc, s *schema.Schema) []Finding {
 			out = append(out, Finding{d.Path, name, "max_length", "error",
 				fmt.Sprintf("field %q is longer than %d", name, f.MaxLength)})
 		}
+		if len(f.Vocabulary) > 0 {
+			var odd []string
+			for _, item := range valueItems(v) {
+				if !inEnum(item, f.Vocabulary) {
+					odd = append(odd, item)
+				}
+			}
+			if len(odd) > 0 {
+				out = append(out, Finding{d.Path, name, "vocabulary", "warn",
+					fmt.Sprintf("field %q uses %s, which the vocabulary does not list", name, strings.Join(odd, ", "))})
+			}
+		}
 	}
 	return out
 }
 
-func checkRule(d model.Doc, r schema.Rule, root string, now time.Time, aliases map[string]string) []Finding {
-	ctx := EvalContext{Doc: d, Root: root, Today: now, Aliases: aliases}
+func checkRule(d model.Doc, r schema.Rule, root string, now time.Time, aliases map[string]string, files *FileList) []Finding {
+	ctx := EvalContext{Doc: d, Root: root, Today: now, Aliases: aliases, Files: files}
 	if r.When != "" {
 		gate, err := EvalIn(r.When, ctx)
 		if err != nil {
@@ -145,6 +159,16 @@ func typeMatches(declared string, k model.Kind) bool {
 		return k == model.KindList
 	}
 	return true
+}
+
+func valueItems(v model.Value) []string {
+	if v.Kind == model.KindList {
+		return v.List()
+	}
+	if v.IsZero() {
+		return nil
+	}
+	return []string{v.String()}
 }
 
 func inEnum(v string, enum []string) bool {

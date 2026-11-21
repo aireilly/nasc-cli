@@ -28,7 +28,7 @@ var afterReadHook func(path string)
 
 func newMarkCmd() *cobra.Command {
 	var sourceCSV, llmCmd, llmTimeout string
-	var write, force, dryRun bool
+	var write, force, dryRun, noCache bool
 	var jobs int
 	c := &cobra.Command{
 		Use:   "mark",
@@ -67,6 +67,10 @@ during --write.`,
 					return ExitError{Code: 2, Msg: "the llm source needs a command: pass --llm-cmd or set mark.llm_cmd in .nasc/config.yaml"}
 				}
 			}
+			var cache *mark.Cache
+			if !noCache {
+				cache = mark.OpenCache(nascPath(filepath.Join("cache", "llm.json")))
+			}
 			sites := ssg.Detect(cfg.Root)
 			rep := mark.Plan(docs, s, mark.Options{
 				Root:       cfg.Root,
@@ -79,11 +83,15 @@ during --write.`,
 					ExcerptBytes: cfg.Mark.LLMExcerptBytes,
 					Prompt:       cfg.Mark.LLMPrompt,
 					Timeout:      timeout,
+					Cache:        cache,
 				},
 				Protected: func(p string) map[string]string { return ssg.Protected(sites, p) },
 			})
 
 			stderr := cmd.ErrOrStderr()
+			if cerr := cache.Save(); cerr != nil {
+				fmt.Fprintf(stderr, "nasc: could not save the llm cache: %v\n", cerr)
+			}
 			reportSkipped(stderr, rep.Skipped)
 			reportUnmapped(stderr, rep.Unmapped, s)
 			reportFailures(stderr, rep.Failures)
@@ -148,6 +156,7 @@ during --write.`,
 	c.Flags().StringVar(&llmCmd, "llm-cmd", "", "agent command for the llm source, e.g. 'claude -p'")
 	c.Flags().StringVar(&llmTimeout, "llm-timeout", "", "limit for one llm call, e.g. 90s (default 2m)")
 	c.Flags().IntVar(&jobs, "jobs", 0, "documents to process at once (default 4)")
+	c.Flags().BoolVar(&noCache, "no-cache", false, "ask the llm again instead of reusing replies stored in .nasc/cache")
 	c.Flags().BoolVar(&force, "force", false, "overwrite human-set values (loud, not default)")
 	return c
 }

@@ -78,6 +78,9 @@ type docOutcome struct {
 // present keys. Later sources see earlier sources' additions. Documents are
 // processed concurrently, opts.Jobs at a time; the report keeps input order.
 func Plan(docs []model.Doc, s *schema.Schema, opts Options) Report {
+	if opts.LLM.Existing == nil {
+		opts.LLM.Existing = existingValues(docs, s, 40)
+	}
 	outcomes := make([]docOutcome, len(docs))
 	jobs := opts.Jobs
 	if jobs < 1 {
@@ -155,6 +158,43 @@ func planOne(d model.Doc, s *schema.Schema, opts Options) docOutcome {
 	}
 	if len(merged) > 0 {
 		out.result = &Result{Path: d.Path, Updates: merged}
+	}
+	return out
+}
+
+// existingValues collects, for each llm-derived list field, the values the
+// corpus already uses, most frequent first, capped at limit.
+func existingValues(docs []model.Doc, s *schema.Schema, limit int) map[string][]string {
+	out := map[string][]string{}
+	for _, name := range fieldsDerivedBy(s, "llm") {
+		if s.Fields[name].Type != "list" {
+			continue
+		}
+		counts := map[string]int{}
+		key := s.Key(name)
+		for _, d := range docs {
+			if v, ok := d.Field(key); ok && v.Kind == model.KindList {
+				for _, item := range v.List() {
+					counts[item]++
+				}
+			}
+		}
+		vals := make([]string, 0, len(counts))
+		for v := range counts {
+			vals = append(vals, v)
+		}
+		sort.Slice(vals, func(i, j int) bool {
+			if counts[vals[i]] != counts[vals[j]] {
+				return counts[vals[i]] > counts[vals[j]]
+			}
+			return vals[i] < vals[j]
+		})
+		if len(vals) > limit {
+			vals = vals[:limit]
+		}
+		if len(vals) > 0 {
+			out[name] = vals
+		}
 	}
 	return out
 }

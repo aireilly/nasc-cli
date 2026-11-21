@@ -35,6 +35,11 @@ type LLMConfig struct {
 	Prompt string
 	// Timeout bounds each call. Zero means no limit.
 	Timeout time.Duration
+	// Cache, when set, answers repeat questions without a call.
+	Cache *Cache
+	// Existing holds, per list field, the values already common in the
+	// corpus, most used first. The prompt asks the model to reuse them.
+	Existing map[string][]string
 }
 
 // LLMRequest describes one document and the fields wanted for it.
@@ -49,6 +54,8 @@ type LLMRequest struct {
 	Feedback string
 	// Prompt overrides DefaultLLMPrompt when non-empty.
 	Prompt string
+	// Existing lists values already in use for a field, to reuse.
+	Existing map[string][]string
 }
 
 // outputError marks a reply the command produced but nasc could not use. A
@@ -115,6 +122,9 @@ func RunLLM(cfg LLMConfig, req LLMRequest) (got map[string]model.Value, rejected
 			rejected = append(rejected, key+" was not a string or list of strings")
 			continue
 		}
+		if f, ok := req.Schema[key]; ok && v.Kind == model.KindList {
+			v = normaliseList(v, f)
+		}
 		if f, ok := req.Schema[key]; ok {
 			if why := boundsProblem(v, f); why != "" {
 				rejected = append(rejected, key+" "+why)
@@ -156,10 +166,23 @@ func buildPrompt(req LLMRequest) string {
 				line += " " + bounds
 			}
 			b.WriteString(line + "\n")
-		case "tags":
-			b.WriteString("  \"tags\": an array of short lowercase topic strings.\n")
 		default:
-			b.WriteString("  \"" + w + "\": a concise, accurate value.\n")
+			f := req.Schema[w]
+			if f.Type != "list" && w != "tags" {
+				b.WriteString("  \"" + w + "\": a concise, accurate value.\n")
+				continue
+			}
+			line := "  \"" + w + "\": an array of short lowercase topic strings."
+			if f.MaxLength > 0 {
+				line += fmt.Sprintf(" At most %d items.", f.MaxLength)
+			}
+			switch {
+			case len(f.Vocabulary) > 0:
+				line += " Use only values from this list: " + strings.Join(f.Vocabulary, ", ") + "."
+			case len(req.Existing[w]) > 0:
+				line += " Prefer values already used in this project where they fit: " + strings.Join(req.Existing[w], ", ") + "."
+			}
+			b.WriteString(line + "\n")
 		}
 	}
 	if req.Feedback != "" {
@@ -208,6 +231,35 @@ func coerceLLM(raw json.RawMessage) (model.Value, bool) {
 	return model.Value{}, false
 }
 
+// normaliseList lowercases and trims list items, drops empty and duplicate
+// items and anything outside the field's vocabulary, and cuts the list to the
+// field's maximum, so a slightly long or messy tag list is fixed rather than
+// rejected.
+func normaliseList(v model.Value, f schema.Field) model.Value {
+	allowed := map[string]bool{}
+	for _, a := range f.Vocabulary {
+		allowed[a] = true
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, item := range v.List() {
+		item = strings.ToLower(strings.TrimSpace(item))
+		if item == "" || seen[item] {
+			continue
+		}
+		if len(allowed) > 0 && !allowed[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+		if f.MaxLength > 0 && len(out) == f.MaxLength {
+			break
+		}
+	}
+	b, _ := json.Marshal(out)
+	return model.Value{Kind: model.KindList, Str: string(b)}
+}
+
 // boundsProblem describes how v breaks f's length bounds, or "" when it fits.
 func boundsProblem(v model.Value, f schema.Field) string {
 	unit := "characters"
@@ -251,9 +303,20 @@ func LLMSource(d model.Doc, s *schema.Schema, cfg LLMConfig, force bool) (map[st
 	if cfg.ExcerptBytes > 0 && len(excerpt) > cfg.ExcerptBytes {
 		excerpt = excerpt[:cfg.ExcerptBytes]
 	}
-	req := LLMRequest{Path: d.Path, Title: d.Title, Type: d.Type, Excerpt: excerpt, Want: want, Schema: sub}
+	req := LLMRequest{Path: d.Path, Title: d.Title, Type: d.Type, Excerpt: excerpt, Want: want, Schema: sub, Prompt: cfg.Prompt, Existing: cfg.Existing}
 
+	// The corpus hints change as docs get tagged, so they stay out of the
+	// key; the doc, the fields, and the instructions decide a cache hit.
+	keyReq := req
+	keyReq.Existing = nil
+	key := cacheKey(cfg.Cmd, buildPrompt(keyReq))
+	if hit, ok := cfg.Cache.get(key); ok {
+		return hit, nil
+	}
 	got, rejected, err := RunLLM(cfg, req)
+	if err == nil && len(rejected) == 0 {
+		cfg.Cache.put(key, got)
+	}
 	var oe outputError
 	switch {
 	case err != nil && !errors.As(err, &oe):
@@ -286,5 +349,6 @@ func LLMSource(d model.Doc, s *schema.Schema, cfg LLMConfig, force bool) (map[st
 	if len(rejected2) > 0 {
 		return got, fmt.Errorf("llm reply rejected after one retry: %s", strings.Join(rejected2, "; "))
 	}
+	cfg.Cache.put(key, got)
 	return got, nil
 }

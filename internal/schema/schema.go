@@ -28,6 +28,10 @@ type Field struct {
 	// are a directory name ("guides") or a repo-relative directory path
 	// ("deploy/environments"); the deepest matching directory wins.
 	Map map[string]string `yaml:"map"`
+	// Vocabulary lists the values a list or string field should use.
+	// validate warns on anything else, and the llm source is told to pick
+	// from it and has other values removed.
+	Vocabulary []string `yaml:"vocabulary"`
 }
 
 // Rule is one custom validation rule.

@@ -134,6 +134,21 @@ This sends one short test prompt and reports the reply or the error.
 
 nasc processes 4 docs at a time by default. Change this with `--jobs` or `mark.jobs`. Each call has a 2 minute limit, which you can change with `--llm-timeout` or `mark.llm_timeout`. When a reply is not valid JSON or a value breaks the schema length bounds, nasc asks again once and tells the model what was wrong. Any doc that still fails is listed on stderr, its other fields are still marked, and `mark` exits 4.
 
+nasc stores each accepted reply in `.nasc/cache/llm.json`, keyed by the command and the exact question. An unchanged doc that is asked the same question again gets the stored reply, so a second run, even with `--force`, does not spend calls on docs whose body has not changed. Pass `--no-cache` to ask again. nasc writes a `.gitignore` into `.nasc/cache/` so the cache stays out of commits.
+
+For list fields such as `tags`, nasc tells the model which values the project already uses, so the same topic gets the same tag across docs. nasc also lowercases the reply, removes duplicates, and cuts the list to the field's `max_length`. To fix the set of allowed tags, list them in `vocabulary`, for example:
+
+```yaml
+fields:
+  tags:
+    type: list
+    derive: llm
+    max_length: 8
+    vocabulary: [api, cli, deployment, kubernetes, testing]
+```
+
+With a vocabulary, the model is told to use only those values, anything else is removed from its reply, and `validate` warns on docs that use other values.
+
 The LLM source is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present.
 
 ### How `lastUpdated` and `owner` are derived
@@ -142,15 +157,66 @@ The LLM source is nondeterministic, so `mark` fills a field only when it is abse
 
 `owner` is the first owner on the matching `CODEOWNERS` rule. nasc reads `.github/CODEOWNERS`, then `CODEOWNERS`, then `docs/CODEOWNERS`, in the same order as GitHub. When no rule matches, `owner` stays unset. Set `mark.owner_fallback: blame` to use the email address of the author with the most lines in the file instead. Be aware that this writes a personal email address into the doc.
 
+### Keeping AGENTS.md small
+
+Agents load `AGENTS.md` at the start of every task, so every line in it costs tokens every time. A full index of a large repository can run to hundreds of lines. nasc warns when the index it writes into `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` is longer than 150 lines. Use one of these options to keep it short:
+
+* Write the full index to its own file and put a short pointer in `AGENTS.md`:
+
+  ```bash
+  nasc index --output docs/INDEX.md --pointer AGENTS.md
+  ```
+
+  This writes a few lines into `AGENTS.md` that tell the agent where the index is. The agent reads the index only when it needs to find documentation.
+
+* Write one index per top-level directory:
+
+  ```bash
+  nasc index --output AGENTS.md --nested
+  ```
+
+  This writes the docs at the top level into `AGENTS.md` with a link to `<dir>/AGENTS.md` for each top-level directory. Agents that read the nearest `AGENTS.md` load only the index for the part of the repository they work in.
+
+Set `index.pointer`, `index.nested`, and `index.max_lines` in `.nasc/config.yaml` to make these the defaults. Links in every index are relative to the file they are written in. A file that nasc generated in full is never indexed itself.
+
+### Flagging docs that a code change affects
+
+Add `paths` to a doc to say which code it describes, for example:
+
+```yaml
+---
+title: Request routing
+paths:
+  - pkg/router/**
+  - cmd/router/main.go
+---
+```
+
+`nasc affected` lists the docs whose `paths` match the files a change touches:
+
+```bash
+nasc affected --changed origin/main
+```
+
+**Example output**
+
+```
+DOC                  UPDATED  CHANGED FILES IT COVERS
+docs/routing.md      no       pkg/router/route.go, pkg/router/weights.go
+```
+
+A doc counts as updated when the same change edits it. In a pull request, `--format github` puts a warning on each changed file that a doc covers, unless that doc was updated too. `--fail` exits 3 instead. The `paths-still-resolve` rule in the `agent-context` preset fails when a doc's `paths` no longer match any file, which usually means the code moved.
+
 ### Commands
 
 ```bash
 nasc schema init [--preset agent-context|minimal]
 nasc schema infer [--write]
-nasc mark [--source file,git,llm] [--write] [--llm-cmd <cmd>] [--llm-timeout <dur>] [--jobs <n>] [--force]
-nasc index [--output <file>|-] [--template <file>] [--strict] [--check]
+nasc mark [--source file,git,llm] [--write] [--llm-cmd <cmd>] [--llm-timeout <dur>] [--jobs <n>] [--no-cache] [--force]
+nasc index [--output <file>|-] [--pointer <file>] [--nested] [--max-lines <n>] [--template <file>] [--strict] [--check]
 nasc validate [path...] [--changed <ref>] [--baseline write|ignore] [--severity error|warn] [--format table|json|jsonl|paths|github]
 nasc get <path> [key]
+nasc affected [file...] [--changed <ref>] [--format table|jsonl|github] [--fail]
 nasc doctor [--llm]
 ```
 
@@ -165,6 +231,7 @@ Usage:
   nasc [command]
 
 Available Commands:
+  affected    List docs whose `paths` cover changed files.
   completion  Generate the autocompletion script for the specified shell
   doctor      Report the environment nasc sees.
   get         Read one frontmatter value from a document.
@@ -280,7 +347,7 @@ no_default_excludes: false   # true scans CHANGELOG.md, testdata/, and the rest
 mark:
   llm_cmd: ""
   llm_excerpt_bytes: 2000    # bytes of each doc sent to the llm; 0 sends the whole file
-  llm_timeout: 2m            # limit for one llm call; 0 means no limit
+  llm_timeout: 2m            # limit for one llm call, 0 means no limit
   jobs: 4                    # docs processed at once
   owner_fallback: ""         # "blame" fills owner from git blame when CODEOWNERS has no match
   llm_prompt: ""             # opening instruction for the llm; empty uses the default below:
@@ -291,6 +358,9 @@ mark:
 index:
   template: templates/agents-index.tmpl   # relative to the project root
   output: AGENTS.md          # when set, `nasc index` writes here instead of stdout
+  pointer: ""                # file that gets a short pointer to output, for example AGENTS.md
+  nested: false              # true writes one index per top-level directory
+  max_lines: 150             # warn past this many lines in AGENTS.md, CLAUDE.md, or GEMINI.md, 0 disables
 
 output:
   default_format: auto       # auto | table | jsonl
@@ -315,8 +385,38 @@ Each field in `.nasc/schema.yaml` accepts these keys:
 | `min_length`, `max_length` | bounds in characters, or in items for a list |
 | `map` | directory to value, for `derive: parent-dir` |
 | `key` | frontmatter key to store the field under, when it differs from the field name |
+| `vocabulary` | values a list or string field should use. `validate` warns on others |
 
 `mark` writes only fields that declare a `derive`.
+
+### Rules
+
+Rules check conditions that field options cannot express. Each rule has a `when` condition, an `assert` condition, a `severity` (`error` or `warn`), and a `message`, for example:
+
+```yaml
+rules:
+  - name: runbooks-have-owners
+    when: type == "runbook"
+    assert: exists(owner) && owner != ""
+    severity: error
+    message: Every runbook needs an owner to page.
+  - name: doc-is-fresh
+    when: exists(lastUpdated)
+    assert: days_since(lastUpdated) <= 365
+    severity: warn
+    message: The body of this doc has not changed in over a year.
+```
+
+Conditions compare values with `==`, `!=`, `<`, `<=`, `>`, and `>=`, and combine them with `&&`, `||`, `!`, and parentheses. `&&` binds tighter than `||`. The functions are:
+
+| Function | Returns |
+| --- | --- |
+| `exists(field)` | whether the field is set |
+| `length(field)` | characters in a string, or items in a list |
+| `contains(field, "text")` | whether the field contains the text |
+| `days_since(field)` | days from a `YYYY-MM-DD` date to today. Guard it with `exists(field)` |
+| `path_match_count(paths)` | files in the repository that match the doc's `paths` globs |
+| `today()` | today's date, for comparing with date fields |
 
 ## License and attribution
 

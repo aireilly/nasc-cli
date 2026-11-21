@@ -186,3 +186,42 @@ func TestPathMatchCount(t *testing.T) {
 		t.Fatalf("path_match_count >= 2 = %v, %v", ok, err)
 	}
 }
+
+func TestBooleanOperators(t *testing.T) {
+	d := model.Doc{Fields: map[string]model.Value{
+		"type":  {Kind: model.KindString, Str: "runbook"},
+		"owner": {Kind: model.KindString, Str: "@ops"},
+	}}
+	cases := map[string]bool{
+		`type == "runbook" && exists(owner)`:                        true,
+		`type == "runbook" && exists(nope)`:                         false,
+		`type == "concept" || exists(owner)`:                        true,
+		`!exists(nope)`:                                             true,
+		`!(type == "runbook")`:                                      false,
+		`(type == "concept" || type == "runbook") && exists(owner)`: true,
+		`type != "concept" && contains(owner, "&&")`:                false,
+		`contains(owner, "||") || type == "runbook"`:                true,
+	}
+	for expr, want := range cases {
+		got, err := EvalIn(expr, EvalContext{Doc: d, Today: time.Now()})
+		if err != nil || got != want {
+			t.Errorf("%s = %v, %v; want %v", expr, got, err, want)
+		}
+	}
+}
+
+func TestDaysSince(t *testing.T) {
+	today := time.Date(2026, 11, 21, 15, 0, 0, 0, time.UTC)
+	d := model.Doc{Fields: map[string]model.Value{"lastUpdated": {Kind: model.KindDate, Str: "2025-11-21"}}}
+	ok, err := EvalIn("days_since(lastUpdated) == 365", EvalContext{Doc: d, Today: today})
+	if err != nil || !ok {
+		t.Fatalf("days_since = %v, %v", ok, err)
+	}
+	ok, err = EvalIn("days_since(lastUpdated) <= 180", EvalContext{Doc: d, Today: today})
+	if err != nil || ok {
+		t.Fatalf("a year-old doc should fail a 180-day rule, got %v, %v", ok, err)
+	}
+	if _, err := EvalIn("days_since(missing) < 1", EvalContext{Doc: d, Today: today}); err == nil {
+		t.Fatal("days_since on a missing field should explain the guard")
+	}
+}

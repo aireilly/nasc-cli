@@ -104,3 +104,86 @@ func TestIndexStrictWithSchemaFailsOnUnmarked(t *testing.T) {
 		t.Fatalf("expected exit code 3 for unmarked doc under --strict, got %v", err)
 	}
 }
+
+// An index written below the root links to docs relative to its own folder,
+// and its own file is not indexed on the next run.
+func TestIndexLinksRelativeToOutput(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "docs", "guides", "a.md"), "# Alpha\n")
+	mustWrite(t, filepath.Join(dir, "README.md"), "# Readme\n")
+	chdir(t, dir)
+
+	_, _, err := run(t, "index", "--output", filepath.Join("docs", "INDEX.md"))
+	expectCode(t, err, 0)
+	got, _ := os.ReadFile(filepath.Join("docs", "INDEX.md"))
+	if !strings.Contains(string(got), "](guides/a.md)") || !strings.Contains(string(got), "](../README.md)") {
+		t.Fatalf("links not relative to docs/:\n%s", got)
+	}
+	_, _, err = run(t, "index", "--check", "--output", filepath.Join("docs", "INDEX.md"))
+	expectCode(t, err, 0) // INDEX.md does not list itself
+}
+
+// --pointer puts the full index in one file and a short pointer in AGENTS.md.
+func TestIndexPointer(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "# Alpha\n")
+	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "# Agents\n\nBuild with make.\n")
+	chdir(t, dir)
+
+	_, _, err := run(t, "index", "--output", filepath.Join("docs", "INDEX.md"), "--pointer", "AGENTS.md")
+	expectCode(t, err, 0)
+	agents, _ := os.ReadFile("AGENTS.md")
+	if !strings.Contains(string(agents), "Build with make.") || !strings.Contains(string(agents), "[docs/INDEX.md](docs/INDEX.md)") {
+		t.Fatalf("AGENTS.md:\n%s", agents)
+	}
+	if strings.Contains(string(agents), "Alpha") {
+		t.Fatalf("AGENTS.md should hold only the pointer:\n%s", agents)
+	}
+	_, _, err = run(t, "index", "--check", "--output", filepath.Join("docs", "INDEX.md"), "--pointer", "AGENTS.md")
+	expectCode(t, err, 0)
+}
+
+// --nested writes one index per top-level directory and links them.
+func TestIndexNested(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "README.md"), "# Readme\n")
+	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "# Alpha\n")
+	mustWrite(t, filepath.Join(dir, "deploy", "dev", "b.md"), "# Beta\n")
+	chdir(t, dir)
+
+	_, _, err := run(t, "index", "--output", "INDEX.md", "--nested")
+	expectCode(t, err, 0)
+	top, _ := os.ReadFile("INDEX.md")
+	docs, _ := os.ReadFile(filepath.Join("docs", "INDEX.md"))
+	deploy, _ := os.ReadFile(filepath.Join("deploy", "INDEX.md"))
+	if !strings.Contains(string(top), "Readme") || strings.Contains(string(top), "Alpha") ||
+		!strings.Contains(string(top), "[docs](docs/INDEX.md)") || !strings.Contains(string(top), "[deploy](deploy/INDEX.md)") {
+		t.Fatalf("top:\n%s", top)
+	}
+	if !strings.Contains(string(docs), "](a.md)") || !strings.Contains(string(deploy), "](dev/b.md)") {
+		t.Fatalf("docs:\n%s\ndeploy:\n%s", docs, deploy)
+	}
+	_, _, err = run(t, "index", "--check", "--output", "INDEX.md", "--nested")
+	expectCode(t, err, 0)
+	mustWrite(t, filepath.Join(dir, "deploy", "c.md"), "# Gamma\n")
+	_, _, err = run(t, "index", "--check", "--output", "INDEX.md", "--nested")
+	expectCode(t, err, 3)
+}
+
+// A long index in AGENTS.md draws a warning about per-task token cost.
+func TestIndexWarnsWhenAgentsFileIsLong(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"a", "b", "c", "d", "e"} {
+		mustWrite(t, filepath.Join(dir, "docs", n+".md"), "# "+n+"\n")
+	}
+	chdir(t, dir)
+	_, errOut, err := run(t, "index", "--output", "AGENTS.md", "--max-lines", "3")
+	expectCode(t, err, 0)
+	if !strings.Contains(errOut, "on every task") {
+		t.Fatalf("expected a size warning, got:\n%s", errOut)
+	}
+	_, errOut, _ = run(t, "index", "--output", "AGENTS.md", "--max-lines", "0")
+	if strings.Contains(errOut, "on every task") {
+		t.Fatalf("--max-lines 0 should disable the warning:\n%s", errOut)
+	}
+}

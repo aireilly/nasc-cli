@@ -53,10 +53,32 @@ type Group struct {
 	Docs []model.Doc
 }
 
+// Subindex is a link from a top-level index to a per-directory index.
+type Subindex struct {
+	Dir   string // directory the subindex covers
+	Path  string // link to the subindex file
+	Count int    // docs it lists
+}
+
 // IndexData is the template input.
 type IndexData struct {
-	Groups   []Group
-	Unmarked []model.Doc
+	Groups     []Group
+	Unmarked   []model.Doc
+	Subindexes []Subindex
+}
+
+// Lines counts the lines in a rendered index.
+func Lines(b []byte) int {
+	return strings.Count(strings.TrimRight(string(b), "\n"), "\n") + 1
+}
+
+// Pointer renders the short block that points an agent at the full index,
+// linked relative to the file the block goes in.
+func Pointer(link string) []byte {
+	return []byte("# Documentation index\n\n" +
+		"The documentation index is in [" + link + "](" + link + "). " +
+		"It lists every doc with one line on what the doc covers. " +
+		"Read it when you need to find documentation, then open only the docs you need.\n")
 }
 
 // BuildIndex groups marked docs by type and collects the unmarked ones.

@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/aireilly/nasc-cli/internal/globs"
 	"github.com/aireilly/nasc-cli/internal/model"
-	"github.com/gobwas/glob"
 )
 
 // EvalContext carries everything an expression can reference.
@@ -23,6 +24,9 @@ type EvalContext struct {
 	// Aliases maps a schema field name to the frontmatter key that stores
 	// it, so rules can name fields the way the schema does.
 	Aliases map[string]string
+	// Files, when set, is the shared file list path_match_count matches
+	// against. Nil lists the files on each call.
+	Files *FileList
 }
 
 // field looks up a field by schema name, following any alias.
@@ -33,8 +37,92 @@ func (c EvalContext) field(name string) (model.Value, bool) {
 	return c.Doc.Field(name)
 }
 
-// EvalIn evaluates a boolean rule expression against ctx.
+// EvalIn evaluates a boolean rule expression against ctx. Expressions combine
+// comparisons with `&&`, `||`, `!`, and parentheses; `&&` binds tighter than
+// `||`.
 func EvalIn(expr string, ctx EvalContext) (bool, error) {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return false, fmt.Errorf("empty expression")
+	}
+	if parts := splitTop(expr, "||"); len(parts) > 1 {
+		for _, p := range parts {
+			ok, err := EvalIn(p, ctx)
+			if err != nil || ok {
+				return ok, err
+			}
+		}
+		return false, nil
+	}
+	if parts := splitTop(expr, "&&"); len(parts) > 1 {
+		for _, p := range parts {
+			ok, err := EvalIn(p, ctx)
+			if err != nil || !ok {
+				return false, err
+			}
+		}
+		return true, nil
+	}
+	if strings.HasPrefix(expr, "!") && !strings.HasPrefix(expr, "!=") {
+		ok, err := EvalIn(expr[1:], ctx)
+		return !ok, err
+	}
+	if wrapped(expr) {
+		return EvalIn(expr[1:len(expr)-1], ctx)
+	}
+	return evalComparison(expr, ctx)
+}
+
+// splitTop splits expr on op where op is outside quotes and parentheses. It
+// returns a single element when op does not occur at the top level.
+func splitTop(expr, op string) []string {
+	var parts []string
+	depth, start := 0, 0
+	inQuotes := false
+	for i := 0; i < len(expr); i++ {
+		switch c := expr[i]; {
+		case c == '"':
+			inQuotes = !inQuotes
+		case inQuotes:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case depth == 0 && strings.HasPrefix(expr[i:], op):
+			parts = append(parts, expr[start:i])
+			i += len(op) - 1
+			start = i + 1
+		}
+	}
+	return append(parts, expr[start:])
+}
+
+// wrapped reports whether expr is one parenthesised group, as in "(a || b)"
+// but not "(a) || (b)" or "length(x)".
+func wrapped(expr string) bool {
+	if len(expr) < 2 || expr[0] != '(' || expr[len(expr)-1] != ')' {
+		return false
+	}
+	depth := 0
+	inQuotes := false
+	for i := 0; i < len(expr); i++ {
+		switch c := expr[i]; {
+		case c == '"':
+			inQuotes = !inQuotes
+		case inQuotes:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 && i != len(expr)-1 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func evalComparison(expr string, ctx EvalContext) (bool, error) {
 	left, op, right, hasOp := splitComparison(expr)
 	if !hasOp {
 		v, err := evalTerm(strings.TrimSpace(expr), ctx)
@@ -114,6 +202,18 @@ func evalTerm(s string, ctx EvalContext) (term, error) {
 		return term{isNum: true, num: float64(pathMatchCount(ctx))}, nil
 	case s == "today()":
 		return term{str: ctx.Today.Format("2006-01-02")}, nil
+	case strings.HasPrefix(s, "days_since(") && strings.HasSuffix(s, ")"):
+		name := strings.TrimSpace(s[len("days_since(") : len(s)-1])
+		v, ok := ctx.field(name)
+		if !ok {
+			return term{}, fmt.Errorf("days_since: %s is not set; guard the rule with when: exists(%s)", name, name)
+		}
+		t, err := time.Parse("2006-01-02", v.String())
+		if err != nil {
+			return term{}, fmt.Errorf("days_since: %s is %q, not a YYYY-MM-DD date", name, v.String())
+		}
+		today := time.Date(ctx.Today.Year(), ctx.Today.Month(), ctx.Today.Day(), 0, 0, 0, 0, time.UTC)
+		return term{isNum: true, num: float64(int(today.Sub(t).Hours() / 24))}, nil
 	case strings.HasPrefix(s, "contains(") && strings.HasSuffix(s, ")"):
 		return containsTerm(s, ctx)
 	case len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"':
@@ -149,28 +249,59 @@ func containsTerm(s string, ctx EvalContext) (term, error) {
 }
 
 func pathMatchCount(ctx EvalContext) int {
-	root := ctx.Root
+	files := ctx.Files
+	if files == nil {
+		files = NewFileList(ctx.Root)
+	}
+	all := files.All()
+	count := 0
+	for _, pattern := range ctx.Doc.Paths {
+		for _, f := range all {
+			if globs.Match(pattern, f) {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// FileList is the set of files under a root, listed once on first use and
+// shared by every rule evaluation in a run.
+type FileList struct {
+	root  string
+	once  sync.Once
+	files []string
+}
+
+// NewFileList returns a lazily populated list of the files under root.
+func NewFileList(root string) *FileList {
 	if root == "" {
 		root = "."
 	}
-	count := 0
-	for _, pattern := range ctx.Doc.Paths {
-		g, err := glob.Compile(pattern, '/')
-		if err != nil {
-			continue
-		}
-		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+	return &FileList{root: root}
+}
+
+// All returns every file under the root as a slash-separated relative path,
+// skipping .git and node_modules.
+func (l *FileList) All() []string {
+	l.once.Do(func() {
+		_ = filepath.WalkDir(l.root, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
 				return nil
 			}
-			rel, _ := filepath.Rel(root, p)
-			if g.Match(filepath.ToSlash(rel)) {
-				count++
+			if d.IsDir() {
+				if n := d.Name(); n == ".git" || n == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if rel, rerr := filepath.Rel(l.root, p); rerr == nil {
+				l.files = append(l.files, filepath.ToSlash(rel))
 			}
 			return nil
 		})
-	}
-	return count
+	})
+	return l.files
 }
 
 func truthy(t term) bool {

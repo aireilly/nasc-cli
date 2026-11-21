@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 	"github.com/aireilly/nasc-cli/internal/model"
 	"github.com/aireilly/nasc-cli/internal/parse"
 	"github.com/aireilly/nasc-cli/internal/presets"
+	"github.com/aireilly/nasc-cli/internal/render"
 	"github.com/aireilly/nasc-cli/internal/scan"
 	"github.com/aireilly/nasc-cli/internal/schema"
 	"github.com/spf13/cobra"
@@ -127,6 +129,12 @@ func loadDocs(cmd *cobra.Command) ([]model.Doc, *schema.Config, error) {
 		data, rerr := os.ReadFile(filepath.Join(cfg.Root, filepath.FromSlash(rel)))
 		if rerr != nil {
 			readErrors = append(readErrors, fmt.Sprintf("nasc: cannot read %s: %v", rel, rerr))
+			continue
+		}
+		// A file nasc generated in full (an index written to a file of its
+		// own) is output, not documentation. Indexing it would list the
+		// index in itself.
+		if bytes.HasPrefix(data, []byte(render.BeginMarker)) {
 			continue
 		}
 		d := parse.File(rel, data)

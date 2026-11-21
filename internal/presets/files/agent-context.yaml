@@ -33,6 +33,10 @@ fields:
     items: string
     required: false
     derive: llm
+    max_length: 8
+    # List the tags this project uses to keep them consistent. validate
+    # warns on others, and the llm source picks only from this list.
+    # vocabulary: [api, cli, deployment, testing]
   owner:
     type: string
     required: false
@@ -42,6 +46,8 @@ fields:
     required: false
     derive: git-last-change
   paths:
+    # Globs for the code this doc describes, for example ["pkg/router/**"].
+    # `nasc affected` uses them to flag docs that a code change touches.
     type: list
     items: string
     required: false
@@ -59,3 +65,10 @@ rules:
     assert: path_match_count(paths) > 0
     severity: error
     message: No files match these globs. The code was probably moved or renamed.
+  - name: doc-is-fresh
+    when: exists(lastUpdated)
+    assert: days_since(lastUpdated) <= 365
+    severity: warn
+    message: >
+      The body of this doc has not changed in over a year. Check that it still
+      matches the code it describes.

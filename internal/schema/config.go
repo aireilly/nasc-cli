@@ -46,6 +46,14 @@ type Config struct {
 	Index struct {
 		Template string `yaml:"template"`
 		Output   string `yaml:"output"`
+		// Pointer is a file (usually AGENTS.md) that gets a short pointer
+		// to Output instead of the full index.
+		Pointer string `yaml:"pointer"`
+		// Nested writes one index per top-level directory.
+		Nested bool `yaml:"nested"`
+		// MaxLines is the size past which nasc warns about an index in a
+		// file agents load on every task. Nil uses the default; 0 disables.
+		MaxLines *int `yaml:"max_lines"`
 	} `yaml:"index"`
 	Output struct {
 		DefaultFormat string `yaml:"default_format"`

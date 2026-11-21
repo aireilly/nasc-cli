@@ -4,6 +4,7 @@
 package mark
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -136,5 +137,74 @@ func TestBuildPromptIncludesFeedback(t *testing.T) {
 	p := buildPrompt(LLMRequest{Path: "a.md", Want: []string{"description"}, Feedback: "description had 9 characters, needs at least 30"})
 	if !strings.Contains(p, "needs at least 30") {
 		t.Fatalf("feedback missing from prompt:\n%s", p)
+	}
+}
+
+// List replies are cleaned up: lowercased, deduplicated, limited to the
+// vocabulary, and cut to the maximum.
+func TestNormaliseList(t *testing.T) {
+	v := model.Value{Kind: model.KindList, Str: `["Kubernetes"," kind ","kubernetes","","vllm","other"]`}
+	got := normaliseList(v, schema.Field{Type: "list", MaxLength: 2})
+	if got.Str != `["kubernetes","kind"]` {
+		t.Fatalf("got %s", got.Str)
+	}
+	got = normaliseList(v, schema.Field{Type: "list", Vocabulary: []string{"vllm", "kind"}})
+	if got.Str != `["kind","vllm"]` {
+		t.Fatalf("got %s", got.Str)
+	}
+}
+
+func TestBuildPromptOffersTagHints(t *testing.T) {
+	req := LLMRequest{Path: "a.md", Want: []string{"tags"},
+		Schema:   map[string]schema.Field{"tags": {Type: "list", MaxLength: 5}},
+		Existing: map[string][]string{"tags": {"kubernetes", "vllm"}}}
+	p := buildPrompt(req)
+	if !strings.Contains(p, "At most 5 items") || !strings.Contains(p, "kubernetes, vllm") {
+		t.Fatalf("prompt:\n%s", p)
+	}
+	req.Schema["tags"] = schema.Field{Type: "list", Vocabulary: []string{"api", "cli"}}
+	if p := buildPrompt(req); !strings.Contains(p, "Use only values from this list: api, cli") {
+		t.Fatalf("prompt:\n%s", p)
+	}
+}
+
+// A second identical question is answered from the cache with no call.
+func TestLLMCacheAvoidsRepeatCalls(t *testing.T) {
+	dir := t.TempDir()
+	counter := dir + "/calls"
+	cmd := `sh -c 'echo x >> ` + counter + `; printf "{\"description\":\"Learn how the cache keeps repeat runs cheap.\"}"'`
+	s, _ := schema.Parse([]byte("version: 1\nfields:\n  description: {type: string, derive: llm, min_length: 10}\n"))
+	d := model.Doc{Path: "a.md", Body: "body"}
+
+	cache := OpenCache(dir + "/cache/llm.json")
+	for i := 0; i < 2; i++ {
+		got, err := LLMSource(d, s, LLMConfig{Cmd: cmd, Cache: cache}, false)
+		if err != nil || got["description"].Len() < 10 {
+			t.Fatalf("run %d: %v %v", i, got, err)
+		}
+	}
+	if err := cache.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := OpenCache(dir + "/cache/llm.json")
+	if _, err := LLMSource(d, s, LLMConfig{Cmd: cmd, Cache: reopened}, false); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ := os.ReadFile(counter)
+	if n := strings.Count(string(calls), "x"); n != 1 {
+		t.Fatalf("llm called %d times, want 1", n)
+	}
+	if _, err := os.Stat(dir + "/cache/.gitignore"); err != nil {
+		t.Fatalf("cache dir should carry a .gitignore: %v", err)
+	}
+
+	// A changed body is a different question.
+	d.Body = "changed"
+	if _, err := LLMSource(d, s, LLMConfig{Cmd: cmd, Cache: reopened}, false); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ = os.ReadFile(counter)
+	if n := strings.Count(string(calls), "x"); n != 2 {
+		t.Fatalf("llm called %d times after a body change, want 2", n)
 	}
 }
