@@ -10,6 +10,7 @@ import (
 
 	"github.com/aireilly/nasc-cli/internal/gitmeta"
 	"github.com/aireilly/nasc-cli/internal/model"
+	"github.com/aireilly/nasc-cli/internal/schema"
 )
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
@@ -28,23 +29,100 @@ func shouldSet(d model.Doc, key string, force, alwaysRefresh bool) bool {
 	return force
 }
 
-// FileSource derives id, title, and type from the path and headings. It fills
-// absent keys and leaves existing values alone unless force is set. Values come
-// from the raw inputs (path slug, H1 heading, parent dir), not from
-// d.Title/d.Type, which already prefer the frontmatter value and so could never
-// be overwritten under force.
-func FileSource(d model.Doc, force bool) map[string]model.Value {
+// fieldsDerivedBy returns the schema's field names whose derive is one of
+// kinds, in declaration order.
+func fieldsDerivedBy(s *schema.Schema, kinds ...string) []string {
+	if s == nil {
+		return nil
+	}
+	names := s.FieldOrder
+	if len(names) == 0 {
+		for n := range s.Fields {
+			names = append(names, n)
+		}
+	}
+	var out []string
+	for _, n := range names {
+		f := s.Fields[n]
+		for _, k := range kinds {
+			if f.Derive == k {
+				out = append(out, n)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// FileSource derives fields from the path and headings: `slug`, `h1`, and
+// `parent-dir`. Only fields the schema declares with one of those derives are
+// produced, keyed by field name. It fills absent values and leaves existing
+// ones alone unless force is set. Values come from the raw inputs (path, H1,
+// directory), not from d.Title/d.Type, which already prefer the frontmatter
+// value and so could never be overwritten under force.
+//
+// The second return value is the document's directory when a parent-dir field
+// could not be placed, so the caller can suggest a map entry; otherwise "".
+func FileSource(d model.Doc, s *schema.Schema, force bool) (map[string]model.Value, string) {
 	up := map[string]model.Value{}
-	if shouldSet(d, "id", force, false) {
-		up["id"] = model.Value{Kind: model.KindString, Str: slug(d.Path)}
+	unmapped := ""
+	for _, name := range fieldsDerivedBy(s, "slug", "h1", "parent-dir") {
+		f := s.Fields[name]
+		if !shouldSet(d, s.Key(name), force, false) {
+			continue
+		}
+		switch f.Derive {
+		case "slug":
+			if sl := slug(d.Path); sl != "" {
+				up[name] = model.Value{Kind: model.KindString, Str: sl}
+			}
+		case "h1":
+			if h1 := firstH1(d); h1 != "" {
+				up[name] = model.Value{Kind: model.KindString, Str: h1}
+			}
+		case "parent-dir":
+			if v, ok := dirValue(d.Path, f); ok {
+				up[name] = model.Value{Kind: model.KindString, Str: v}
+			} else {
+				unmapped = path.Dir(d.Path)
+			}
+		}
 	}
-	if h1 := firstH1(d); h1 != "" && shouldSet(d, "title", force, false) {
-		up["title"] = model.Value{Kind: model.KindString, Str: h1}
+	return up, unmapped
+}
+
+// dirValue resolves a parent-dir field for a document path. The field's map is
+// checked from the deepest directory up, by full path and then by directory
+// name; "." in the map covers top-level files. Without a map hit the immediate
+// parent directory name is used, but only when the field has no enum or the
+// name is in it.
+func dirValue(p string, f schema.Field) (string, bool) {
+	if path.Dir(p) == "." {
+		if v, ok := f.Map["."]; ok {
+			return v, true
+		}
 	}
-	if pt := parentDirType(d.Path); pt != "" && shouldSet(d, "type", force, false) {
-		up["type"] = model.Value{Kind: model.KindString, Str: pt}
+	for dir := path.Dir(p); dir != "." && dir != "/" && dir != ""; dir = path.Dir(dir) {
+		if v, ok := f.Map[dir]; ok {
+			return v, true
+		}
+		if v, ok := f.Map[path.Base(dir)]; ok {
+			return v, true
+		}
 	}
-	return up
+	raw := parentDirType(p)
+	if raw == "" {
+		return "", false
+	}
+	if len(f.Enum) == 0 {
+		return raw, true
+	}
+	for _, e := range f.Enum {
+		if e == raw {
+			return raw, true
+		}
+	}
+	return "", false
 }
 
 // firstH1 returns the text of the document's first level-1 heading, or "".
@@ -67,30 +145,44 @@ func parentDirType(p string) string {
 	return path.Base(dir)
 }
 
-// GitSource derives lastUpdated and owner from git history. lastUpdated always
-// refreshes: it is git's to own and moves on every commit, so a stale value is
-// never what you want. owner is filled only when absent, since a project may set
-// it by hand. force overwrites either.
-func GitSource(d model.Doc, root string, force bool) map[string]model.Value {
+// GitSource derives `git-last-change` and `codeowners` fields from git.
+// git-last-change always refreshes: it is git's to own and ignores commits
+// that only touched frontmatter, so it settles once a body change is dated.
+// codeowners fills only when absent, since a project may set the owner by
+// hand. force overwrites either. ownerBlame enables the git blame fallback
+// when no CODEOWNERS rule matches.
+func GitSource(d model.Doc, s *schema.Schema, root string, force, ownerBlame bool) map[string]model.Value {
 	up := map[string]model.Value{}
 	if !gitmeta.Available(root) {
 		return up
 	}
-	if shouldSet(d, "lastUpdated", force, true) {
-		if iso, err := gitmeta.LastUpdated(root, d.Path); err == nil && iso != "" {
-			up["lastUpdated"] = model.Value{Kind: model.KindDate, Str: iso}
-		}
-	}
-	if shouldSet(d, "owner", force, false) {
-		if o, err := gitmeta.Owner(root, d.Path); err == nil && o != "" {
-			up["owner"] = model.Value{Kind: model.KindString, Str: o}
+	for _, name := range fieldsDerivedBy(s, "git-last-change", "codeowners") {
+		key := s.Key(name)
+		switch s.Fields[name].Derive {
+		case "git-last-change":
+			if !shouldSet(d, key, force, true) {
+				continue
+			}
+			if iso, err := gitmeta.LastUpdated(root, d.Path); err == nil && iso != "" {
+				up[name] = model.Value{Kind: model.KindDate, Str: iso}
+			}
+		case "codeowners":
+			if !shouldSet(d, key, force, false) {
+				continue
+			}
+			if o, err := gitmeta.Owner(root, d.Path, ownerBlame); err == nil && o != "" {
+				up[name] = model.Value{Kind: model.KindString, Str: o}
+			}
 		}
 	}
 	return up
 }
 
+// slug turns a repo-relative path into an identifier that is unique across
+// the corpus: "deploy/environments/dev/README.md" becomes
+// "deploy-environments-dev-readme".
 func slug(p string) string {
-	base := strings.TrimSuffix(path.Base(p), path.Ext(p))
-	s := nonSlug.ReplaceAllString(strings.ToLower(base), "-")
+	s := strings.TrimSuffix(p, path.Ext(p))
+	s = nonSlug.ReplaceAllString(strings.ToLower(s), "-")
 	return strings.Trim(s, "-")
 }

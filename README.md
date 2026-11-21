@@ -21,7 +21,6 @@ Example nasc output [deploy/environments/dev/README.md](https://github.com/airei
 ```yaml
 ---
 description: Learn how to use dev Kustomize overlays to deploy vLLM in EPD, P/D, E/PD, and fully disaggregated scenarios on KIND or e2e tests.
-id: readme
 lastUpdated: 2026-07-16
 owner: '@llm-d/router-maintainers'
 tags:
@@ -34,7 +33,7 @@ tags:
   - deployment
   - dev-environment
 title: Development Environment Overlays
-type: dev
+type: runbook
 ---
 ```
 
@@ -42,7 +41,7 @@ type: dev
 
 ## Install
 
-Requires Go 1.25 or newer.
+Requires Go 1.27 or newer.
 
 ```bash
 go install github.com/aireilly/nasc-cli/cmd/nasc@latest
@@ -58,17 +57,19 @@ go build -o nasc ./cmd/nasc
 
 ## Quick start
 
-`mark`, `index`, and `validate` work with no configuration. When there is no `.nasc/schema.yaml`, nasc uses a built-in `agent-context` default. Run `nasc schema init` only when you want to pin or change that schema in the repo.
+`mark`, `index`, and `validate` work with no configuration. When there is no `.nasc/schema.yaml`, nasc uses a built-in `agent-context` default and `validate` reports every finding as a warning. This means you can add nasc to CI before you mark a single doc. Run `nasc schema init` when you want the rules enforced.
+
+You can run nasc from any directory in the repository. nasc walks up to the nearest directory that holds `.nasc/`, or to the git top level, and treats that as the project root. Pass `-C <dir>` to choose the root yourself.
 
 ```bash
-# Optional: pin a schema in the repo so the rules are explicit and reviewable.
+# Look at what you already have, and let nasc propose a schema.
+nasc schema infer
+
+# Pin a schema in the repo so the rules are explicit, reviewable, and enforced.
 nasc schema init --preset agent-context
 
-# Look at what you already have, and let nasc propose a schema.
-nasc schema infer --write
-
-# Backfill metadata from file facts and git history. Review the patch before writing.
-nasc mark --source file,git --patch
+# Backfill metadata from file facts and git history. Review the diff before writing.
+nasc mark --source file,git
 nasc mark --source file,git --write
 
 # Generate the index agents read first.
@@ -78,39 +79,74 @@ nasc index --output AGENTS.md
 nasc validate
 ```
 
-Add an optional LLM source when you want a derived one-line description or tags. `nasc` never vendors an SDK or holds an API key. It shells out to an agent CLI you already run:
+### Mapping directories to types
 
-```bash
-nasc mark --source file,git,llm --llm-cmd "claude -p" --patch
+The `agent-context` preset allows five values for `type`: `concept`, `procedure`, `reference`, `architecture`, and `runbook`. `mark` uses a directory name as the type when the name is one of those values. For any other directory, add a `map` entry to the field in `.nasc/schema.yaml`, for example:
+
+```yaml
+fields:
+  type:
+    type: string
+    required: true
+    derive: parent-dir
+    enum: [concept, procedure, reference, architecture, runbook]
+    map:
+      guides: procedure
+      deploy/environments: runbook
+      ".": concept
 ```
 
-### Generating descriptions with LLM
+A key is a directory name or a repo-relative directory path. The deepest matching directory wins, and `"."` covers files at the top level. `mark` leaves `type` unset for directories it cannot place and prints them, so you can paste them into the map.
+
+### Working alongside a site generator
+
+Docusaurus uses `id` to build page URLs, and Hugo uses `type` to choose a page layout. When `mark` finds a `docusaurus.config.*` or Hugo config at the root or one directory below it, it leaves those keys alone for docs in that site and tells you. To store a nasc field under another key, set `key` on the field:
+
+```yaml
+fields:
+  type:
+    type: string
+    derive: parent-dir
+    key: nasc_type
+```
+
+`validate`, `index`, and rule expressions follow the renamed key. `nasc doctor` lists every site generator it detects.
+
+### Generating descriptions with an LLM
 
 The `description` field is what a human scanning `AGENTS.md`, or an agent choosing what to open, reads first. The `file` and `git` sources cannot write it, because it takes reading the doc to say what the doc teaches. That is the job of the `llm` source.
 
-Run it by adding `llm` to `--source` and passing the CLI to shell out to:
+Run it by adding `llm` to `--source` and passing the command to run:
 
 ```bash
-nasc mark --source file,git,llm --llm-cmd "claude -p" --patch
+nasc mark --source file,git,llm --llm-cmd "claude -p"
 ```
 
-`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because `nasc` builds the whole prompt itself. For each doc that needs a derived field, `nasc` sends the file path, title, type, and the first 2000 bytes of the body
+`--llm-cmd` is any command that reads a prompt on stdin and writes a reply to stdout. A bare agent CLI such as `claude -p`, `ollama run <model>`, or `llm` works with nothing wrapped around it, because nasc builds the whole prompt itself. nasc splits the command with shell quoting rules and runs it directly, without a shell. For each doc that needs a derived field, nasc sends the file path, title, type, and the first 2000 bytes of the body.
 
-The prompt tells the agent to write file descriptions in direct active language.
+nasc processes 4 docs at a time by default. Change this with `--jobs` or `mark.jobs`. Each call has a 2 minute limit, which you can change with `--llm-timeout` or `mark.llm_timeout`. When a reply is not valid JSON or a value breaks the schema length bounds, nasc asks again once and tells the model what was wrong. Any doc that still fails is listed on stderr, its other fields are still marked, and `mark` exits 4.
 
-The LLM source is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present. Set `llm_cmd` and `llm_excerpt_bytes` under `mark:` in `.nasc/config.yaml` to make the command and excerpt size defaults.
+The LLM source is nondeterministic, so `mark` fills a field only when it is absent. A doc that already has a `description` keeps it across runs, and the corpus does not churn. Pass `--force` to regenerate fields that are already present.
+
+### How `lastUpdated` and `owner` are derived
+
+`lastUpdated` is the author date of the most recent commit that changed the doc body. Commits that change only the frontmatter are skipped. This means committing the output of `mark` does not move the date, and running `mark` again after that commit changes nothing. In a shallow clone, nasc uses the oldest commit available.
+
+`owner` is the first owner on the matching `CODEOWNERS` rule. nasc reads `.github/CODEOWNERS`, then `CODEOWNERS`, then `docs/CODEOWNERS`, in the same order as GitHub. When no rule matches, `owner` stays unset. Set `mark.owner_fallback: blame` to use the email address of the author with the most lines in the file instead. Be aware that this writes a personal email address into the doc.
 
 ### Commands
 
 ```bash
 nasc schema init [--preset agent-context|minimal]
 nasc schema infer [--write]
-nasc mark [--source file,git,llm] [--dry-run|--write|--patch] [--llm-cmd <cmd>] [--force]
-nasc index [--output <file>] [--template <file>] [--strict]
-nasc validate [--severity error|warn] [--json]
+nasc mark [--source file,git,llm] [--write] [--llm-cmd <cmd>] [--llm-timeout <dur>] [--jobs <n>] [--force]
+nasc index [--output <file>|-] [--template <file>] [--strict]
+nasc validate [--severity error|warn] [--format table|json|jsonl|paths]
 nasc get <path> [key]
 nasc doctor
 ```
+
+Every command accepts `-C <dir>` to set the project root.
 
 ```bash
 $ nasc --help
@@ -140,13 +176,15 @@ Available Commands:
 walk repo → parse each doc (frontmatter + body) → one of { mark | index | validate }
 ```
 
-The walker streams markdown paths, honouring `.gitignore` and `.nascignore`, and always skips `.git/`, `.nasc/`, `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so `nasc` never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, any `SKILL.md`, and everything under a `.claude/` or `.cursor/` directory.
+The walker streams markdown paths, honouring `.gitignore`, `.nascignore`, and the `include` and `exclude` globs in `.nasc/config.yaml`. It always skips dot directories (such as `.git/`, `.github/`, and `.claude/`), `node_modules/`, and `vendor/`. It also skips files that are agent instructions rather than documentation, so nasc never marks or indexes them: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and any `SKILL.md`.
+
+By default nasc also excludes `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `LICENSE.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, and everything under a `testdata/` or `third_party/` directory. Set `no_default_excludes: true` to scan them.
 
 `nasc index --output AGENTS.md` merges rather than overwrites.
 
 ## Continuous integration
 
-`nasc validate` reads every doc, checks it against the schema, and exits 3 when a doc breaks a rule. A non-zero exit fails the job, so a pull request that adds an unmarked or malformed doc is caught before it merges.
+`nasc validate` reads every doc, checks it against the schema, and exits 3 when a doc breaks a rule. A non-zero exit fails the job, so a pull request that adds an unmarked or malformed doc is caught before it merges. Until you commit `.nasc/schema.yaml`, `validate` reports findings as warnings and always exits 0.
 
 ```yaml
 # .github/workflows/docs.yml
@@ -175,6 +213,7 @@ Add `nasc index --output AGENTS.md --strict` as a second step once a schema is c
 | 1    | success, nothing to do (empty result, empty diff)             |
 | 2    | usage error                                                   |
 | 3    | validation failure (`validate`, `index --strict`)             |
+| 4    | the `llm` source failed for at least one doc (`mark`)         |
 | 5    | write conflict, a file changed under us during `mark --write` |
 
 ## Configuration
@@ -182,35 +221,51 @@ Add `nasc index --output AGENTS.md --strict` as a second step once a schema is c
 `.nasc/config.yaml`, every key optional:
 
 ```yaml
-root: .
+root: .                      # directory to scan, relative to the project root
 include: ["**/*.md", "**/*.mdx"]
-exclude: ["CHANGELOG.md", "node_modules/**"]
+exclude: ["drafts/**", "internal/notes.md"]
+no_default_excludes: false   # true scans CHANGELOG.md, testdata/, and the rest
 
 mark:
   llm_cmd: ""
-  llm_excerpt_bytes: 2000   # bytes of each doc sent to the llm; 0 sends the whole file
-  llm_prompt: ""          # opening instruction for the llm; empty uses the default below:
+  llm_excerpt_bytes: 2000    # bytes of each doc sent to the llm; 0 sends the whole file
+  llm_timeout: 2m            # limit for one llm call; 0 means no limit
+  jobs: 4                    # docs processed at once
+  owner_fallback: ""         # "blame" fills owner from git blame when CODEOWNERS has no match
+  llm_prompt: ""             # opening instruction for the llm; empty uses the default below:
   # "You are generating navigation metadata for a documentation file. It serves two
   #  readers at once: a human skimming an index to find the right doc, and an AI agent
   #  deciding whether to load it. Write for both."
 
 index:
-  template: templates/agents-index.tmpl
-  output: AGENTS.md
+  template: templates/agents-index.tmpl   # relative to the project root
+  output: AGENTS.md          # when set, `nasc index` writes here instead of stdout
 
 output:
-  default_format: auto   # auto | table | jsonl
+  default_format: auto       # auto | table | jsonl
 ```
+
+Glob rules follow `.gitignore` conventions. A pattern with no slash, such as `CHANGELOG.md`, matches that file name at any depth. A leading `**/` also matches at the root, so `**/*.md` matches `README.md`. A trailing `/**` matches everything under a directory.
 
 `llm_excerpt_bytes` caps how much of each document body reaches the LLM when deriving fields. Set it to `0` to send the whole file.
 
 `llm_prompt` is the opening instruction that frames the task for the model. Leave it unset to use the built-in default.
 
-```yaml
-mark:
-  llm_cmd: claude -p
-  llm_excerpt_bytes: 0
-```
+### Schema field options
+
+Each field in `.nasc/schema.yaml` accepts these keys:
+
+| Key | Meaning |
+| --- | --- |
+| `type` | `string`, `number`, `bool`, `date`, or `list` |
+| `required` | `true` makes a missing value an error |
+| `derive` | `slug` (full path), `h1`, `parent-dir`, `llm`, `codeowners`, or `git-last-change` |
+| `enum` | allowed values |
+| `min_length`, `max_length` | bounds in characters, or in items for a list |
+| `map` | directory to value, for `derive: parent-dir` |
+| `key` | frontmatter key to store the field under, when it differs from the field name |
+
+`mark` writes only fields that declare a `derive`.
 
 ## License and attribution
 

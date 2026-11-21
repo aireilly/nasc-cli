@@ -10,13 +10,18 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aireilly/nasc-cli/internal/globs"
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
 // Options configures a walk.
 type Options struct {
-	Root    string
-	Include []string // reserved for config-driven globs; extension filter is default
+	Root string
+	// Include, when set, limits the walk to files matching at least one glob.
+	// The markdown extension filter still applies on top.
+	Include []string
+	// Exclude drops files (and whole directories, for `dir/**` patterns)
+	// matching any glob. See package globs for the matching rules.
 	Exclude []string
 }
 
@@ -66,6 +71,9 @@ func Walk(opts Options) ([]string, error) {
 			if gi != nil && gi.MatchesPath(rel+"/") {
 				return fs.SkipDir
 			}
+			if globs.DirExcluded(opts.Exclude, rel) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
@@ -78,6 +86,12 @@ func Walk(opts Options) ([]string, error) {
 			return nil // agent instructions and skill files, not docs
 		}
 		if gi != nil && gi.MatchesPath(rel) {
+			return nil
+		}
+		if len(opts.Include) > 0 && !globs.MatchAny(opts.Include, rel) {
+			return nil
+		}
+		if globs.MatchAny(opts.Exclude, rel) {
 			return nil
 		}
 		out = append(out, rel)

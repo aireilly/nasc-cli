@@ -30,11 +30,11 @@ func newSchemaInitCmd() *cobra.Command {
 			if err != nil {
 				return ExitError{Code: 2, Msg: err.Error()}
 			}
-			dest := filepath.Join(".nasc", "schema.yaml")
+			dest := nascPath("schema.yaml")
 			if _, err := os.Stat(dest); err == nil && !force {
 				return ExitError{Code: 2, Msg: dest + " exists; pass --force to overwrite"}
 			}
-			if err := os.MkdirAll(".nasc", 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 				return err
 			}
 			if err := os.WriteFile(dest, data, 0o644); err != nil {

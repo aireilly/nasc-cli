@@ -5,16 +5,15 @@ package cli
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// With no .nasc/schema.yaml, validate falls back to the built-in default and
-// enforces it (a bare doc is missing required fields), rather than refusing to
-// run for lack of a schema. A note on stderr says the default is in use.
+// With no .nasc/schema.yaml, validate checks against the built-in default but
+// reports everything as warnings, so adding nasc to CI never fails a build
+// until the project commits a schema. A note on stderr says so.
 func TestValidateWithoutSchemaUsesDefault(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "docs", "a.md"), "no frontmatter here\n")
@@ -30,9 +29,11 @@ func TestValidateWithoutSchemaUsesDefault(t *testing.T) {
 	cmd.SetArgs([]string{"validate", "--format", "jsonl"})
 	err := cmd.Execute()
 
-	var ec ExitError
-	if !errors.As(err, &ec) || ec.Code != 3 {
-		t.Fatalf("expected exit code 3 validating against the default, got %v", err)
+	if err != nil {
+		t.Fatalf("validate against the implicit default should pass, got %v", err)
+	}
+	if !strings.Contains(out.String(), `"severity":"warn"`) {
+		t.Fatalf("expected findings downgraded to warn, got:\n%s", out.String())
 	}
 	if !strings.Contains(errOut.String(), "built-in") {
 		t.Fatalf("expected a note that the default schema is in use, stderr:\n%s", errOut.String())

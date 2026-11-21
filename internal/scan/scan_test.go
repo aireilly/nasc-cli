@@ -68,3 +68,29 @@ func TestWalkSkipsAgentFiles(t *testing.T) {
 		t.Fatalf("Walk = %v, want %v", got, want)
 	}
 }
+
+// Include narrows the walk and exclude removes files and whole directories,
+// using the gitignore-like rules in package globs.
+func TestWalkHonoursIncludeExclude(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "README.md", "keep")
+	writeFile(t, dir, "docs/guide.md", "keep")
+	writeFile(t, dir, "docs/CHANGELOG.md", "skip")
+	writeFile(t, dir, "CHANGELOG.md", "skip")
+	writeFile(t, dir, "pkg/testdata/fixture.md", "skip")
+	writeFile(t, dir, "third_party/lib/README.md", "skip")
+	writeFile(t, dir, "site/page.mdx", "skip by include")
+
+	got, err := Walk(Options{
+		Root:    dir,
+		Include: []string{"**/*.md"},
+		Exclude: []string{"CHANGELOG.md", "**/testdata/**", "third_party/**"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"README.md", "docs/guide.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Walk = %v, want %v", got, want)
+	}
+}

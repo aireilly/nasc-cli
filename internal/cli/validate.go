@@ -17,19 +17,24 @@ func newValidateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "validate",
 		Short: "Enforce the schema across the corpus. Fails CI on error findings.",
+		Long: `Enforce the schema across the corpus.
+
+With a checked-in .nasc/schema.yaml, error findings exit 3 and fail CI.
+Without one, nasc checks against its built-in default and reports every
+finding as a warning, so adding nasc to CI never fails a build until the
+project commits a schema of its own.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			docs, cfg, err := loadDocs(cmd)
+			docs, cfg, s, isDefault, err := loadAll(cmd)
 			if err != nil {
 				return err
 			}
-			s, isDefault, serr := loadSchema()
-			if serr != nil {
-				return ExitError{Code: 2, Msg: "schema error: " + serr.Error()}
-			}
-			if isDefault {
-				fmt.Fprintf(cmd.ErrOrStderr(), "nasc: no .nasc/schema.yaml; validating against the built-in %q default (run `nasc schema init` to customize)\n", defaultPreset)
-			}
 			findings := validate.Check(docs, s, cfg.Root)
+			if isDefault {
+				fmt.Fprintf(cmd.ErrOrStderr(), "nasc: no .nasc/schema.yaml; checking against the built-in %q default as warnings only (run `nasc schema init` to enforce)\n", defaultPreset)
+				for i := range findings {
+					findings[i].Severity = "warn"
+				}
+			}
 			findings = filterSeverity(findings, minSeverity)
 
 			f := render.Detect(cmd.OutOrStdout(), format, cfg.Output.DefaultFormat)
@@ -42,7 +47,7 @@ func newValidateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&format, "format", "", "output format: table|json|jsonl")
+	c.Flags().StringVar(&format, "format", "", "output format: table|json|jsonl|paths")
 	c.Flags().BoolVar(new(bool), "json", false, "shorthand for --format json")
 	c.Flags().StringVar(&minSeverity, "severity", "warn", "minimum severity to report: warn|error")
 	// Map --json to --format json.

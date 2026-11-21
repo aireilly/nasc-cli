@@ -24,10 +24,11 @@ type Finding struct {
 func Check(docs []model.Doc, s *schema.Schema, root string) []Finding {
 	var out []Finding
 	now := time.Now()
+	aliases := s.Aliases()
 	for _, d := range docs {
 		out = append(out, checkFields(d, s)...)
 		for _, r := range s.Rules {
-			out = append(out, checkRule(d, r, root, now)...)
+			out = append(out, checkRule(d, r, root, now, aliases)...)
 		}
 	}
 	return out
@@ -37,7 +38,7 @@ func checkFields(d model.Doc, s *schema.Schema) []Finding {
 	var out []Finding
 	for _, name := range fieldNames(s) {
 		f := s.Fields[name]
-		v, present := d.Field(name)
+		v, present := d.Field(s.Key(name))
 		if !present {
 			if f.Required {
 				out = append(out, Finding{d.Path, name, "required", "error",
@@ -66,8 +67,8 @@ func checkFields(d model.Doc, s *schema.Schema) []Finding {
 	return out
 }
 
-func checkRule(d model.Doc, r schema.Rule, root string, now time.Time) []Finding {
-	ctx := EvalContext{Doc: d, Root: root, Today: now}
+func checkRule(d model.Doc, r schema.Rule, root string, now time.Time, aliases map[string]string) []Finding {
+	ctx := EvalContext{Doc: d, Root: root, Today: now, Aliases: aliases}
 	if r.When != "" {
 		gate, err := EvalIn(r.When, ctx)
 		if err != nil {

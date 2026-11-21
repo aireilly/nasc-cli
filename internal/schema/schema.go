@@ -6,6 +6,7 @@ package schema
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -19,6 +20,14 @@ type Field struct {
 	MinLength int      `yaml:"min_length"`
 	MaxLength int      `yaml:"max_length"`
 	Items     string   `yaml:"items"`
+	// Key is the frontmatter key this field is stored under, when it differs
+	// from the field's name. Use it to keep nasc's fields clear of keys a
+	// site generator already owns, such as Docusaurus `id` or Hugo `type`.
+	Key string `yaml:"key"`
+	// Map translates a directory into a value for `derive: parent-dir`. Keys
+	// are a directory name ("guides") or a repo-relative directory path
+	// ("deploy/environments"); the deepest matching directory wins.
+	Map map[string]string `yaml:"map"`
 }
 
 // Rule is one custom validation rule.
@@ -45,9 +54,9 @@ func Parse(data []byte) (*Schema, error) {
 		return nil, err
 	}
 	var raw struct {
-		Version int             `yaml:"version"`
+		Version int              `yaml:"version"`
 		Fields  map[string]Field `yaml:"fields"`
-		Rules   []Rule          `yaml:"rules"`
+		Rules   []Rule           `yaml:"rules"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -83,14 +92,57 @@ func fieldOrder(root *yaml.Node) []string {
 	return nil
 }
 
+var validDerives = map[string]bool{
+	"slug": true, "h1": true, "parent-dir": true, "llm": true,
+	"codeowners": true, "git-last-change": true,
+}
+
+func (s *Schema) sortedNames() []string {
+	names := make([]string, 0, len(s.Fields))
+	for n := range s.Fields {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func contains(xs []string, x string) bool {
+	for _, e := range xs {
+		if e == x {
+			return true
+		}
+	}
+	return false
+}
+
 var validTypes = map[string]bool{
 	"string": true, "number": true, "bool": true, "date": true, "list": true,
 }
 
 func (s *Schema) validate() error {
-	for name, f := range s.Fields {
+	keys := map[string]string{}
+	for _, name := range s.sortedNames() {
+		f := s.Fields[name]
 		if !validTypes[f.Type] {
 			return fmt.Errorf("field %q has unknown type %q", name, f.Type)
+		}
+		if f.Derive != "" && !validDerives[f.Derive] {
+			return fmt.Errorf("field %q has unknown derive %q", name, f.Derive)
+		}
+		key := s.Key(name)
+		if other, dup := keys[key]; dup {
+			return fmt.Errorf("fields %q and %q both use frontmatter key %q", other, name, key)
+		}
+		keys[key] = name
+		if len(f.Map) > 0 && f.Derive != "parent-dir" {
+			return fmt.Errorf("field %q has a map but derive is %q; map only applies to derive: parent-dir", name, f.Derive)
+		}
+		if len(f.Enum) > 0 {
+			for dir, v := range f.Map {
+				if !contains(f.Enum, v) {
+					return fmt.Errorf("field %q maps %q to %q, which is not in its enum", name, dir, v)
+				}
+			}
 		}
 	}
 	for _, r := range s.Rules {
@@ -99,6 +151,32 @@ func (s *Schema) validate() error {
 		}
 	}
 	return nil
+}
+
+// Key returns the frontmatter key that stores the named field.
+func (s *Schema) Key(name string) string {
+	if s == nil {
+		return name
+	}
+	if f, ok := s.Fields[name]; ok && f.Key != "" {
+		return f.Key
+	}
+	return name
+}
+
+// Aliases maps each renamed field's name to its frontmatter key, for rule
+// expressions that refer to fields by name.
+func (s *Schema) Aliases() map[string]string {
+	out := map[string]string{}
+	if s == nil {
+		return out
+	}
+	for name, f := range s.Fields {
+		if f.Key != "" && f.Key != name {
+			out[name] = f.Key
+		}
+	}
+	return out
 }
 
 // Load reads and parses a schema file.

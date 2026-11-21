@@ -1,10 +1,6 @@
 version: 1
 
 fields:
-  id:
-    type: string
-    required: false
-    derive: slug
   title:
     type: string
     required: true
@@ -14,6 +10,18 @@ fields:
     required: true
     derive: parent-dir
     enum: [concept, procedure, reference, architecture, runbook]
+    # mark uses a directory's name when it is one of the values above.
+    # Map other directories here; the deepest match wins and "." covers
+    # top-level files. Directories left unmapped get no type, and mark
+    # lists them so you can add them.
+    # map:
+    #   guides: procedure
+    #   docs/api: reference
+    #   ".": concept
+    #
+    # If a site generator already uses `type` (Hugo picks layouts with it),
+    # store this field under another key:
+    # key: nasc_type
   description:
     type: string
     required: true

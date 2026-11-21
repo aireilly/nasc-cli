@@ -20,6 +20,17 @@ type EvalContext struct {
 	Doc   model.Doc
 	Root  string
 	Today time.Time
+	// Aliases maps a schema field name to the frontmatter key that stores
+	// it, so rules can name fields the way the schema does.
+	Aliases map[string]string
+}
+
+// field looks up a field by schema name, following any alias.
+func (c EvalContext) field(name string) (model.Value, bool) {
+	if k, ok := c.Aliases[name]; ok {
+		return c.Doc.Field(k)
+	}
+	return c.Doc.Field(name)
 }
 
 // EvalIn evaluates a boolean rule expression against ctx.
@@ -93,11 +104,11 @@ func evalTerm(s string, ctx EvalContext) (term, error) {
 	switch {
 	case strings.HasPrefix(s, "exists(") && strings.HasSuffix(s, ")"):
 		name := s[len("exists(") : len(s)-1]
-		_, ok := ctx.Doc.Field(name)
+		_, ok := ctx.field(name)
 		return term{isBool: true, b: ok}, nil
 	case strings.HasPrefix(s, "length(") && strings.HasSuffix(s, ")"):
 		name := s[len("length(") : len(s)-1]
-		v, _ := ctx.Doc.Field(name)
+		v, _ := ctx.field(name)
 		return term{isNum: true, num: float64(v.Len())}, nil
 	case strings.HasPrefix(s, "path_match_count(") && strings.HasSuffix(s, ")"):
 		return term{isNum: true, num: float64(pathMatchCount(ctx))}, nil
@@ -115,7 +126,7 @@ func evalTerm(s string, ctx EvalContext) (term, error) {
 		return term{isNum: true, num: n}, nil
 	}
 	// Bare identifier: a field reference.
-	v, ok := ctx.Doc.Field(s)
+	v, ok := ctx.field(s)
 	if !ok {
 		return term{}, nil
 	}
@@ -133,7 +144,7 @@ func containsTerm(s string, ctx EvalContext) (term, error) {
 	}
 	field := strings.TrimSpace(parts[0])
 	needle := strings.Trim(strings.TrimSpace(parts[1]), `"`)
-	v, _ := ctx.Doc.Field(field)
+	v, _ := ctx.field(field)
 	return term{isBool: true, b: strings.Contains(v.String(), needle)}, nil
 }
 

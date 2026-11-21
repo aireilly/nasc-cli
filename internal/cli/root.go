@@ -19,6 +19,7 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 	root.PersistentFlags().Bool("no-color", false, "disable coloured output")
+	root.PersistentFlags().StringVarP(&rootFlag, "root", "C", "", "project root (default: nearest directory with .nasc/, else the git top level)")
 	root.AddCommand(newSchemaCmd())
 	root.AddCommand(newValidateCmd())
 	root.AddCommand(newMarkCmd())

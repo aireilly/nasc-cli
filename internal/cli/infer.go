@@ -26,8 +26,8 @@ func newSchemaInferCmd() *cobra.Command {
 			}
 			stats := infer.Observe(docs)
 			if write {
-				dest := filepath.Join(".nasc", "schema.yaml")
-				if err := os.MkdirAll(".nasc", 0o755); err != nil {
+				dest := nascPath("schema.yaml")
+				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 					return err
 				}
 				if err := os.WriteFile(dest, infer.ToSchema(stats, threshold), 0o644); err != nil {

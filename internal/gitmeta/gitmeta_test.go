@@ -184,8 +184,8 @@ func TestCodeownersMatchPrecedenceOfLocations(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := codeownersMatch(dir, "main.go")
-	if got != "@root" {
-		t.Fatalf("codeownersMatch = %q, want @root (root CODEOWNERS should win)", got)
+	if got != "@github" {
+		t.Fatalf("codeownersMatch = %q, want @github (.github/CODEOWNERS wins, as on GitHub)", got)
 	}
 }
 
@@ -233,7 +233,7 @@ func TestOwnerFallsBackToBlame(t *testing.T) {
 	dir := initRepo(t)
 	writeAndCommit(t, dir, "a.md", "hello")
 
-	got, err := Owner(dir, "a.md")
+	got, err := Owner(dir, "a.md", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,11 +250,91 @@ func TestOwnerPrefersCodeowners(t *testing.T) {
 	writeAndCommit(t, dir, "CODEOWNERS", "*.md @docsteam\n")
 	writeAndCommit(t, dir, "a.md", "hello")
 
-	got, err := Owner(dir, "a.md")
+	got, err := Owner(dir, "a.md", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "@docsteam" {
 		t.Fatalf("Owner = %q, want @docsteam", got)
+	}
+}
+
+// Without the blame fallback, a file no CODEOWNERS rule covers has no owner,
+// so no personal email address is written into the doc.
+func TestOwnerNoFallbackLeavesEmpty(t *testing.T) {
+	dir := initRepo(t)
+	writeAndCommit(t, dir, "a.md", "hello")
+	got, err := Owner(dir, "a.md", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Fatalf("Owner = %q, want empty without blame fallback", got)
+	}
+}
+
+// When nasc scans a subdirectory, CODEOWNERS patterns still resolve against the
+// repository top.
+func TestCodeownersFromSubdirRoot(t *testing.T) {
+	dir := initRepo(t)
+	writeAndCommit(t, dir, ".github/CODEOWNERS", "/docs/api/ @api-team\n")
+	writeAndCommit(t, dir, "docs/api/ref.md", "x")
+	got := codeownersMatch(filepath.Join(dir, "docs"), "api/ref.md")
+	if got != "@api-team" {
+		t.Fatalf("codeownersMatch = %q, want @api-team", got)
+	}
+}
+
+func commitAt(t *testing.T, dir, name, content, date string) {
+	t.Helper()
+	if err := writeFile(dir, name, content); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", name}, {"commit", "-m", "edit " + name}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// A commit that only changes frontmatter (such as nasc's own mark commit) does
+// not move lastUpdated, so mark is stable across runs.
+func TestLastUpdatedSkipsFrontmatterOnlyCommits(t *testing.T) {
+	dir := initRepo(t)
+	commitAt(t, dir, "a.md", "# A\n\nbody\n", "2024-01-10T12:00:00Z")
+	commitAt(t, dir, "a.md", "---\nlastUpdated: 2024-01-10\n---\n# A\n\nbody\n", "2024-03-01T12:00:00Z")
+	commitAt(t, dir, "a.md", "---\nlastUpdated: 2024-01-10\ntags: [x]\n---\n# A\n\nbody\n", "2024-04-01T12:00:00Z")
+	got, err := LastUpdated(dir, "a.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "2024-01-10" {
+		t.Fatalf("lastUpdated = %q, want 2024-01-10 (frontmatter-only commits skipped)", got)
+	}
+
+	commitAt(t, dir, "a.md", "---\nlastUpdated: 2024-01-10\ntags: [x]\n---\n# A\n\nnew body\n", "2024-05-02T12:00:00Z")
+	got, _ = LastUpdated(dir, "a.md")
+	if got != "2024-05-02" {
+		t.Fatalf("lastUpdated = %q, want 2024-05-02 after a body change", got)
+	}
+}
+
+func TestStripFrontmatter(t *testing.T) {
+	cases := map[string]string{
+		"no fm\n":                        "no fm\n",
+		"---\na: 1\n---\nbody\n":         "body\n",
+		"---\r\na: 1\r\n---\r\nbody\r\n": "body\n",
+		"\uFEFF---\na: 1\n---\nbody":     "body",
+		"---\n---\nbody":                 "body",
+		"---\na: 1\n...\nbody":           "body",
+		"---\nunclosed\n":                "---\nunclosed\n",
+	}
+	for in, want := range cases {
+		if got := StripFrontmatter(in); got != want {
+			t.Errorf("StripFrontmatter(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
