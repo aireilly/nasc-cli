@@ -255,6 +255,8 @@ The walker streams markdown paths, honouring `.gitignore`, `.nascignore`, and th
 
 By default `nasc` also excludes `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `LICENSE.md`, `NOTICE.md`, `CODE_OF_CONDUCT.md`, and everything under a `testdata/` or `third_party/` directory. Set `no_default_excludes: true` to scan them.
 
+`mark` rewrites only the frontmatter lines of the keys it sets. Every other key keeps its exact formatting, quoting, and comments, so the diff shows only what `mark` added.
+
 `nasc index --output AGENTS.md` merges rather than overwrites.
 
 ## Continuous integration
@@ -277,10 +279,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: aireilly/nasc-cli@v0.2.2
+      - uses: aireilly/nasc-cli@v0.2.3
         with:
           args: validate --format github --changed origin/${{ github.base_ref }}
-      - uses: aireilly/nasc-cli@v0.2.2
+      - uses: aireilly/nasc-cli@v0.2.3
         with:
           args: index --check
 ```
@@ -312,7 +314,7 @@ You do not have to fix every existing doc before you turn on CI. Use one of thes
 ```yaml
 repos:
   - repo: https://github.com/aireilly/nasc-cli
-    rev: v0.2.2
+    rev: v0.2.3
     hooks:
       - id: nasc-validate
       - id: nasc-index-check
@@ -325,7 +327,7 @@ repos:
 Install a release binary from the [releases page](https://github.com/aireilly/nasc-cli/releases), or build with Go:
 
 ```bash
-$ go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.2
+$ go install github.com/aireilly/nasc-cli/cmd/nasc@v0.2.3
 $ nasc validate --changed origin/main
 $ nasc index --check
 ```

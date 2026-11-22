@@ -46,6 +46,22 @@ func Set(original []byte, updates map[string]model.Value) ([]byte, error) {
 			return original, err // never edit unparseable frontmatter
 		}
 	}
+	if ok {
+		if spliced, sok := splice(fmLFOf(fm), &doc, updates); sok {
+			contentStart := fmStart + 4
+			if bytes.HasPrefix(original[fmStart:], []byte("---\r\n")) {
+				contentStart = fmStart + 5
+			}
+			if fmCRLF {
+				spliced = bytes.ReplaceAll(spliced, []byte("\n"), []byte("\r\n"))
+			}
+			var out bytes.Buffer
+			out.Write(original[:contentStart])
+			out.Write(spliced)
+			out.Write(original[contentStart+len(fm):])
+			return out.Bytes(), nil
+		}
+	}
 	mapping := rootMapping(&doc)
 
 	for _, key := range sortedKeys(updates) {
@@ -144,4 +160,133 @@ func sortedKeys(m map[string]model.Value) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func fmLFOf(fm []byte) []byte {
+	return bytes.ReplaceAll(fm, []byte("\r\n"), []byte("\n"))
+}
+
+// splice applies updates by rewriting only the lines of the keys it sets,
+// and of the deprecated provenance key it removes. Every other line of the
+// frontmatter, including its formatting, quoting, and comments, is kept byte
+// for byte. It reports false when the frontmatter is not a plain block
+// mapping it can edit line by line, and the caller then re-encodes the whole
+// block.
+func splice(fmLF []byte, doc *yaml.Node, updates map[string]model.Value) ([]byte, bool) {
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 {
+		return nil, false
+	}
+	m := doc.Content[0]
+	if m.Kind != yaml.MappingNode || m.Style&yaml.FlowStyle != 0 || usesAnchors(m) {
+		return nil, false
+	}
+	lines := strings.SplitAfter(string(fmLF), "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	// replace maps a key's first line (0-based) to its span end and new text.
+	type edit struct {
+		end  int
+		text string
+	}
+	edits := map[int]edit{}
+	present := map[string]bool{}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		k := m.Content[i]
+		if k.Kind != yaml.ScalarNode || k.Column != 1 || k.Line < 1 || k.Line > len(lines) {
+			return nil, false
+		}
+		present[k.Value] = true
+		v, set := updates[k.Value]
+		if !set && k.Value != "x-nasc-generated" {
+			continue
+		}
+		start := k.Line - 1
+		end := spanEnd(lines, start)
+		text := ""
+		if set {
+			enc, err := encodePair(k, valueNode(v))
+			if err != nil {
+				return nil, false
+			}
+			text = enc
+		}
+		edits[start] = edit{end: end, text: text}
+	}
+
+	var out strings.Builder
+	for i := 0; i < len(lines); i++ {
+		if e, hit := edits[i]; hit {
+			out.WriteString(e.text)
+			i = e.end
+			continue
+		}
+		out.WriteString(lines[i])
+	}
+	if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
+		out.WriteString("\n")
+	}
+	for _, key := range sortedKeys(updates) {
+		if present[key] {
+			continue
+		}
+		enc, err := encodePair(&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, valueNode(updates[key]))
+		if err != nil {
+			return nil, false
+		}
+		out.WriteString(enc)
+	}
+	return []byte(out.String()), true
+}
+
+// spanEnd returns the last line of the top-level entry that starts on line
+// start: the lines after it that are indented, or that continue a block
+// sequence written at the key's own indent. Trailing blank lines are left
+// for the next entry.
+func spanEnd(lines []string, start int) int {
+	end := start
+	for i := start + 1; i < len(lines); i++ {
+		l := strings.TrimRight(lines[i], "\n")
+		switch {
+		case strings.TrimSpace(l) == "":
+			continue
+		case l[0] == ' ' || l[0] == '\t' || l == "-" || strings.HasPrefix(l, "- "):
+			end = i
+		default:
+			return end
+		}
+	}
+	return end
+}
+
+// encodePair renders one top-level entry the way the full encoder would.
+func encodePair(k, v *yaml.Node) (string, error) {
+	key := *k
+	key.HeadComment, key.LineComment, key.FootComment = "", "", ""
+	m := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{&key, v}}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(m); err != nil {
+		return "", err
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// usesAnchors reports whether any node under n has an anchor or is an alias.
+// Rewriting one entry could then break a reference, so splice declines.
+func usesAnchors(n *yaml.Node) bool {
+	if n.Anchor != "" || n.Kind == yaml.AliasNode {
+		return true
+	}
+	for _, c := range n.Content {
+		if usesAnchors(c) {
+			return true
+		}
+	}
+	return false
 }
