@@ -16,7 +16,9 @@ It marks docs with agent-friendly YAML metadata, generates a docs index for agen
 AI coding agents are expensive at navigating documentation. When docs carry no metadata, an agent falls back on `ls`, `grep`, and `cat`, reading whole files just to find out whether they matter.
 With `nasc`, agents can pick which docs to open from the frontmatter alone, instead of reading every file.
 
-Example `nasc` demo PR [aireilly/llm-d-router/pull/1](https://github.com/aireilly/llm-d-router/pull/1):
+Example `nasc` demo PR: [aireilly/llm-d-router/pull/1](https://github.com/aireilly/llm-d-router/pull/1).
+
+Example front matter:
 
 ```yaml
 ---
